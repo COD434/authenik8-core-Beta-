@@ -1,9 +1,7 @@
 import dotenv from "dotenv";
 import Redis,{Redis as RedisClient}  from "ioredis"
-import {RateLimiterRedis ,RateLimiterMemory} from "rate-limiter-flexible";
-import {setupRedis} from "./redis"
+import {setupRedis} from "../redis/redisService" 
 import {Request, Response, NextFunction} from "express"
- import {RatelimitsBlocked, RatelimitAllowed} from "./Monitor/monitor"
 dotenv.config()
 
 
@@ -44,11 +42,14 @@ await this.redis.hset(`rate_limit:${key}`,{
 tokens:(newToken - 1).toString(),
 lastRefill: now.toString()
 })
-.expire(`rate_limit:${key}`, 3600)
-.exec()
+this.redis.expire(`rate_limit:${key}`, 3600)
+
+
+
 return {allowed:true ,remaining:Math.floor(newToken - 1)};
  }
 }
+
 let tokenBucket: TokenBucket;
 
 
@@ -59,7 +60,7 @@ tokenBucket = new TokenBucket(redisClient);
 const createRatelimiter = (config:{
 capacity:number;
 refillRate: number;
-keyGenerator:(req:Request)=> string;
+keyGenerator: (req:Request)=> string;
 })=>{
 return async(req:Request, res:Response, next:NextFunction): Promise<void> =>{
 const key = config.keyGenerator(req);
@@ -74,10 +75,9 @@ res.set({
 ...(!allowed && {"Retry-After": retryAfter?.toString() || "1"})
 })
 if(allowed){
-RatelimitAllowed.inc();
+
 return next();
 }else{
-RatelimitsBlocked.inc();
 res.status(429).json({
 error:`Too many requests`
  })
@@ -93,7 +93,7 @@ const RATE_LIMIT_CONFIGS= {
 	capacity:3,
 	keyGenerator: (req:Request)=>{
 		const email =req.body?.email;
-		if(!email) return req.ip  || "unknown"
+	 return email || req.ip  || "unknown"
 }
 	},
 
@@ -102,7 +102,7 @@ const RATE_LIMIT_CONFIGS= {
 	keyPrefix:"login_limiter",
         capacity:10,
         refillRate:2,
-	keyGenerator:(req: Request) => req.ip || "unknown"
+	keyGenerator:(req: Request): string => req.ip || "unknown"
 	}
 };
 

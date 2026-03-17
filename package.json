@@ -1,0 +1,43 @@
+{
+  "name": "authenik8-core",
+  "version": "0.1.0",
+  "description": "Security-First  authentication toolkit for nodejs APIs",
+  "keywords": [
+    ":[authentication",
+    "jwt",
+    "rate-limiter",
+    "api-security",
+    "redis]"
+  ],
+  "homepage": "https://gitlab.com/COD434/authenik8-core#readme",
+  "bugs": {
+    "url": "https://gitlab.com/COD434/authenik8-core/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://gitlab.com/COD434/authenik8-core.git"
+  },
+  "license": "MIT",
+  "author": "Karabo Seeisa",
+  "type": "commonjs",
+  "main": "dist/index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build": "tsc"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/jsonwebtoken": "^9.0.10",
+    "@types/node": "^25.5.0",
+    "typescript": "^5.9.3"
+  },
+  "dependencies": {
+    "@prisma/client": "^7.5.0",
+    "connect-redis": "^9.0.0",
+    "dotenv": "^17.3.1",
+    "helmet": "^8.1.0",
+    "ioredis": "^5.10.0",
+    "ip-cidr": "^4.0.2",
+    "rate-limiter-flexible": "^10.0.1"
+  }
+}
