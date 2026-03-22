@@ -21,6 +21,7 @@ const tokenStore = new RedisTokenStore(redisClient);
 
 	const refreshService = new RefreshService({
 	tokenStore,
+	redisClient,
 	accessTokenSecret:config.jwtSecret,
 	refreshTokenSecret:config.refreshSecret,
 	accessTokenExpiry:config.jwtExpiry,

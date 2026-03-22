@@ -19,6 +19,7 @@ const createAuthenik8 = async (config) => {
     });
     const refreshService = new refreshService_1.RefreshService({
         tokenStore,
+        redisClient,
         accessTokenSecret: config.jwtSecret,
         refreshTokenSecret: config.refreshSecret,
         accessTokenExpiry: config.jwtExpiry,

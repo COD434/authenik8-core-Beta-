@@ -1,6 +1,6 @@
 {
   "name": "authenik8-core",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "A modular Node.js authentication SDK with JWT, secure refresh token rotation, and built-in security middleware.",
   "keywords": [
     "authentication",
@@ -33,7 +33,8 @@
     "files": [
       "dist",
       "README.md",
-      "LICENSE"
+      "LICENSE",
+      "CHANGELOG"
     ]
   },
   "devDependencies": {

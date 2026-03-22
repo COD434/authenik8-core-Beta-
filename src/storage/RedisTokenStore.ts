@@ -17,34 +17,45 @@ console.log(`[Redis ${action}]`,{key, value})
  }
 }
  async storeRefreshToken(token:string,userId:string,ttl:number){
- const key = this.key("refresh", token);
+ const key = this.key("refresh", userId);
  await this.redis.set(key,userId, "EX",ttl);
  this.log("SET", key, userId)
 
 }
 
-async getRefreshToken(token:string){
-const key = this.key("refresh",token);
+async getRefreshToken(userId:string){
+const key = this.key("refresh",userId);
 const value = await this.redis.get(key);
 this.log("GET",key , value);
 return value;
 }
+async getset(key: string, value: string, expiry?: number): Promise<string | null> {
 
-async deleteRefreshToken(token:string){
-const key = this.key("refresh",token);
+  const previous = await this.redis.getset(key, value);
+
+  if (expiry) {
+    await this.redis.expire(key, expiry);
+  }
+
+  this.log("GETSET", key, { previous, new: value });
+  return previous;
+}
+
+async deleteRefreshToken(userId:string){
+const key = this.key("refresh",userId);
 await this.redis.del(key);
 this.log("DEL",key);
 
 }
 
-async blacklistToken(token: string, ttl: number) {
-    const key = this.key("blacklist", token);
+async blacklistToken(userId: string, ttl: number) {
+    const key = this.key("blacklist", userId);
     await this.redis.set(key, "1", "EX", ttl);
     this.log("SET", key, "blacklisted");
   }
 
-  async isBlacklisted(token: string) {
-    const key = this.key("blacklist", token);
+  async isBlacklisted(userId: string) {
+    const key = this.key("blacklist", userId);
     const exists = await this.redis.exists(key);
     this.log("CHECK", key, exists);
     return exists === 1;

@@ -7,10 +7,11 @@ export declare class RedisTokenStore {
     private key;
     private log;
     storeRefreshToken(token: string, userId: string, ttl: number): Promise<void>;
-    getRefreshToken(token: string): Promise<string | null>;
-    deleteRefreshToken(token: string): Promise<void>;
-    blacklistToken(token: string, ttl: number): Promise<void>;
-    isBlacklisted(token: string): Promise<boolean>;
+    getRefreshToken(userId: string): Promise<string | null>;
+    getset(key: string, value: string, expiry?: number): Promise<string | null>;
+    deleteRefreshToken(userId: string): Promise<void>;
+    blacklistToken(userId: string, ttl: number): Promise<void>;
+    isBlacklisted(userId: string): Promise<boolean>;
     incrementRateLimit(ip: string, ttl: number): Promise<number>;
     addToWhitelist(ip: string): Promise<void>;
     removeFromWhitelist(ip: string): Promise<void>;
