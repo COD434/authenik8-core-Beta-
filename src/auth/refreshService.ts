@@ -1,4 +1,7 @@
 import jwt from "jsonwebtoken";
+import { SignOptions } from "jsonwebtoken";
+import {randomUUID} from "crypto"
+
 
 export class MissingTokenError extends Error{
 constructor(message="Missing Token")
@@ -30,10 +33,10 @@ del?(key :string):Promise<void>;
 
 }
 export interface RefreshServiceOptions {
-	redisClient:TokenStore;
+	tokenStore:TokenStore;
 	accessTokenSecret:string;
 	refreshTokenSecret:string;
-	accessTokenExpiry:string;
+	accessTokenExpiry:SignOptions["expiresIn"];
 	rotateRefreshTokens?:boolean;
 	refreshTokenExpiry?:string;
 }
@@ -45,22 +48,41 @@ refreshToken?:string;
 
 
 export class RefreshService{
-private redisClient:TokenStore;
+private tokenStore:TokenStore;
 private accessTokenSecret:string;
 private refreshTokenSecret:string;
-private accessTokenExpiry:string;
+private accessTokenExpiry:SignOptions["expiresIn"];
 private rotateRefreshTokens:boolean;
 private refreshTokenExpiry:string;
 
 
 constructor(options:RefreshServiceOptions){
-this.redisClient = options.redisClient;
+this.tokenStore =  options.tokenStore;
 this.accessTokenSecret = options.accessTokenSecret;
 this.refreshTokenSecret =options.refreshTokenSecret;
-this.accessTokenExpiry = options.accessTokenExpiry ?? "15m";
+this.accessTokenExpiry= options.accessTokenExpiry ?? "15m";
 this.rotateRefreshTokens = options.rotateRefreshTokens ?? false;
 this.refreshTokenExpiry = options.refreshTokenExpiry ?? "7d"
  }
+
+ async generateRefreshToken(payload: TokenPayload): Promise<string> {
+
+	 if (!payload.userId) throw new Error("generateRefreshToken: payload.userId is missing");
+
+	 const token = jwt.sign({...payload,jti:randomUUID(),},this.refreshTokenSecret, {
+    expiresIn: this.refreshTokenExpiry as SignOptions["expiresIn"],
+  });
+
+  if(this.tokenStore.set){
+  await this.tokenStore.set(
+  `refresh:${payload.userId}`,token, 60 * 60 * 24 * 7
+  );
+  }
+
+  
+  return token
+}
+
 
  async refresh(refreshToken?:string):Promise<RefreshResult>{
 	 if(!refreshToken){
@@ -74,47 +96,38 @@ decoded = jwt.verify(refreshToken,this.refreshTokenSecret) as TokenPayload;
 throw new InvalidTokenError()
 }
 
-const storedToken= await this.redisClient.get(`refresh:${decoded.userId}`)
+const storedToken= await this.tokenStore.get(`refresh:${decoded.userId}`)
+
+
 
 if (storedToken !== refreshToken){
 throw new InvalidTokenError();
 }
+
+const newAccessToken = jwt.sign(
+        { userId: decoded.userId, email: decoded.email },
+        this.accessTokenSecret,
+        { expiresIn: this.accessTokenExpiry as jwt.SignOptions["expiresIn"] }
+    );
+
 let newRefreshToken:string | undefined;
 
-if(this.rotateRefreshTokens && this.redisClient.set && this.redisClient.del){
-await this.redisClient.del(`refresh:${decoded.userId}`);
+if(this.rotateRefreshTokens && this.tokenStore.set){
+const key = `refresh:${decoded.userId}`
 
- newRefreshToken =jwt.sign({userId:decoded.userId,email : decoded.email},
+;
+ newRefreshToken =jwt.sign({userId:decoded.userId,email : decoded.email,jti:randomUUID(),},
 	this.refreshTokenSecret,
 {expiresIn:this.refreshTokenExpiry as jwt.SignOptions["expiresIn"]});
 
-await this.redisClient.set(`refresh:${decoded.userId}`,newRefreshToken)
+await this.tokenStore.set(key,newRefreshToken,60 * 60 * 24 * 7)
+
 }
 
-const newAccessToken = jwt.sign(
-	{
-
-	userId: decoded.userId,
-	email: decoded.email
-	},
-this.accessTokenSecret,
-{expiresIn: this.accessTokenExpiry as jwt.SignOptions["expiresIn"]});
  return{
  accessToken:newAccessToken,
- refreshToken:newRefreshToken,
+ refreshToken:newRefreshToken ?? refreshToken
  };
 }
 }
 
-//export class RefreshService{
-//constructor(
-//private validateAndRefreshToken:(token:string) => Promise<string//>)//{}
-
-//async refresh(refreshToken?:string){
-	//if(!refreshToken){
-//throw new Error("Missing Token")
-//}
-//return await this.validateAndRefreshToken(refreshToken);
-       // }
-
-//}

@@ -37,12 +37,10 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.SecurityModule = void 0;
-const dotenv_1 = __importDefault(require("dotenv"));
 const helmet_1 = __importDefault(require("helmet"));
 const ioredis_1 = __importDefault(require("ioredis"));
 const rate_limiter_flexible_1 = require("rate-limiter-flexible");
-const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
-dotenv_1.default.config();
+const WHITELIST_KEY = "whitelist:ips";
 const IP_EXPIRATION_SECONDS = 7 * 24 * 60 * 60;
 const DEFAULT_JWT_EXPIRY = "1h";
 const JWT_SECRET = process.env.JWT_SECRET || "Boo";
@@ -76,25 +74,16 @@ class SecurityModule {
             console.log("SecurityRedis  Connected to:", this.redisClient.options.host);
         });
     }
-    generateJWT(payload, expiry) {
-        const options = {
-            expiresIn: expiry || this.jwtExpiry
-        };
-        return jsonwebtoken_1.default.sign(payload, this.jwtSecret, options);
-    }
-    verifyJWT(token) {
-        return jsonwebtoken_1.default.verify(token, this.jwtSecret);
-    }
     async isAllowed(ip) {
         if (!this.whiteListEnabled)
             return true;
         try {
-            const exists = await this.redisClient.sismember("whitelist:ip:", ip);
+            const exists = await this.redisClient.sismember(WHITELIST_KEY, ip);
             if (exists === 1)
                 return true;
             if (ip === "::1" || ip === "127.0.0.1")
                 return true;
-            const entries = await this.redisClient.smembers("whitelist:ips");
+            const entries = await this.redisClient.smembers(WHITELIST_KEY);
             for (const entry of entries) {
                 if (entry.includes("/")) {
                     const CIDR = (await Promise.resolve().then(() => __importStar(require("ip-cidr")))).default;
@@ -110,14 +99,14 @@ class SecurityModule {
         }
     }
     async addIP(ipOrCIDR, ttl = IP_EXPIRATION_SECONDS) {
-        await this.redisClient.sadd("whitelist:ips", ipOrCIDR);
-        await this.redisClient.expire("whitelist:ips", ttl);
+        await this.redisClient.sadd(WHITELIST_KEY, ipOrCIDR);
+        await this.redisClient.expire(WHITELIST_KEY, ttl);
     }
     async removeIP(ipOrCIDR) {
-        await this.redisClient.srem("whitelist:ip", ipOrCIDR);
+        await this.redisClient.srem(WHITELIST_KEY, ipOrCIDR);
     }
     async listIPs() {
-        return await this.redisClient.smembers("whitelist:ips");
+        return await this.redisClient.smembers(WHITELIST_KEY);
     }
     whiteListMiddleware() {
         return async (req, res, next) => {

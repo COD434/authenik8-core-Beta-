@@ -1,7 +1,6 @@
 import Redis from "ioredis";
 import type { StringValue } from "ms";
 import { RequestHandler } from "express";
-import jwt from "jsonwebtoken";
 import { Request, Response, NextFunction } from "express";
 export interface SecurityOptions {
     redisClient?: Redis;
@@ -26,8 +25,6 @@ export declare class SecurityModule {
     private helmetEnabled;
     private rateLimiterEnabled;
     constructor(options?: SecurityOptions);
-    generateJWT(payload: object, expiry?: StringValue): string;
-    verifyJWT(token: string): string | jwt.JwtPayload;
     isAllowed(ip: string): Promise<boolean>;
     addIP(ipOrCIDR: string, ttl?: number): Promise<void>;
     removeIP(ipOrCIDR: string): Promise<void>;

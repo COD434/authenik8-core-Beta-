@@ -1,16 +1,14 @@
-import dotenv from "dotenv"
+
 import helmet from  "helmet";
 import Redis from "ioredis";
 import type {StringValue} from "ms"
 import { RequestHandler } from "express";
-import {RateLimiterRedis} from "rate-limiter-flexible";  
-import jwt from "jsonwebtoken";
-import {SignOptions} from "jsonwebtoken"
+import {RateLimiterRedis} from "rate-limiter-flexible";
 import { Request, Response, NextFunction } from "express";
 import { HelmetOptions } from "helmet";
-dotenv.config();
 
 
+const WHITELIST_KEY ="whitelist:ips";
 const IP_EXPIRATION_SECONDS = 7 * 24 * 60 * 60;
 const DEFAULT_JWT_EXPIRY = "1h"
 
@@ -90,28 +88,19 @@ console.log("SecurityRedis  Connected to:",this.redisClient.options.host);
 })
 }
 
-generateJWT(payload:object, expiry?:StringValue){
-	const options:SignOptions ={
-	expiresIn :expiry || this.jwtExpiry
-	};
-return jwt.sign(payload,this.jwtSecret!,options)
-}
-verifyJWT(token:string){
-return jwt.verify(token,this.jwtSecret)
-}
 
 async isAllowed(ip:string):Promise<boolean>{
 if(!this.whiteListEnabled)
 return true;
 
 try{
-const exists = await this.redisClient.sismember("whitelist:ip:",ip);
+const exists = await this.redisClient.sismember(WHITELIST_KEY,ip);
  if (exists ===1) return true;
 
 
 if( ip === "::1" || ip === "127.0.0.1")
 return true;
-const entries = await this.redisClient.smembers("whitelist:ips")
+const entries = await this.redisClient.smembers(WHITELIST_KEY)
 
 for (const entry of entries){
 if(entry.includes("/"))
@@ -129,15 +118,15 @@ return false;
 }
 
 async addIP(ipOrCIDR:string,ttl:number =IP_EXPIRATION_SECONDS){
-await this.redisClient.sadd("whitelist:ips",ipOrCIDR);
-await this.redisClient.expire("whitelist:ips",ttl)
+await this.redisClient.sadd(WHITELIST_KEY,ipOrCIDR);
+await this.redisClient.expire(WHITELIST_KEY,ttl)
 }
 async removeIP(ipOrCIDR:string){
-await this.redisClient.srem("whitelist:ip",ipOrCIDR);
+await this.redisClient.srem(WHITELIST_KEY,ipOrCIDR);
 }
 
 async listIPs(): Promise<string[]>{
-return await this.redisClient.smembers("whitelist:ips");
+return await this.redisClient.smembers(WHITELIST_KEY);
 }
 
 whiteListMiddleware(){

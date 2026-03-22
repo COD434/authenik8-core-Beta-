@@ -8,13 +8,13 @@ interface JwtPayload {
     createdAt?: number;
 }
 export interface JWTOptions {
-    secret: string;
+    jwtSecret: string;
     expiry?: SignOptions["expiresIn"];
     redisClient?: any;
     onGuestToken?: () => void;
 }
 export declare class JWTService {
-    private secret;
+    private jwtSecret;
     private expiry?;
     signToken(payload: object): string;
     private redisclient?;
