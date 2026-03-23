@@ -2,29 +2,17 @@
 
 Most JWT authentication systems break under real-world attacks.
 Authenik8-core is built to handle them.
-***
-## The Problem
-JWT makes authentication look simple…
 
-But in production, it introduces serious issues:
-
-Refresh token replay attacks
-
-Stateless logout (no real session control)
-
-Broken token rotation
-
-Rate limiting that attackers can bypass
-Most systems don’t catch these.
 ***
 ## What Authenik8-core Does
 Authenik8-core adds a security layer on top of JWT:
-## Refresh token rotation with replay protection (jti-based)
-## Stateful session control using Redis
+ •Refresh token rotation with replay protection (jti-based)
 
-## Built-in security 
-middleware (rate limiting, IP control)
-## Unified authentication + security logic
+ •Stateful session control using Redis
+
+ •Built-in security middleware (rate limiting, IP control)
+
+ •Unified authentication + security logic
 
 ## Example: Replay Attack Prevention
 ```
