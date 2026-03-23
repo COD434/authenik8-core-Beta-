@@ -83,17 +83,44 @@ auth.requireAdmin;
 ***
 ## Architecture
 
+```
+┌───────────────┐
+                │    Client     │
+                │ (Web / Mobile)│
+                └───────┬───────┘
+                        │
+                        ▼
+            ┌─────────────────────┐
+            │   API / Backend     │
+            └─────────┬───────────┘
+                      │
+                      ▼
+            ┌─────────────────────┐
+            │   Authenik8-core    │
+            │─────────────────────│
+            │  JWT Service        │
+            │  - Sign / Verify    │
+            │                     │
+            │  Refresh Service    │
+            │  - Rotation         │
+            │  - Replay Detection │
+            │                     │
+            │  Security Module    │
+            │  - Rate Limiting    │
+            │  - IP Controls      │
+            │  - Middleware       │
+            └─────────┬───────────┘
+                      │
+                      ▼
+            ┌─────────────────────┐
+            │       Redis         │
+            │─────────────────────│
+            │  Session Store      │
+            │  Token State        │
+            │  Revocation Data    │
+            └─────────────────────┘
 
-Client
-  │
-  ▼
-Authenik8
-  ├── JWTService
-  ├── RefreshService (rotation)
-  ├── SecurityModule
-  ▼
-Redis
-
+```
 ***
 
 ## Important
@@ -101,7 +128,7 @@ Redis
 Authenik8-core uses stateful JWT authentication.
 This means:
 Requires Redis (or compatible store)
-Provides better control over sessions and security
+Provides stronger security and control than stateless JWT
 
 ## Add your files
 
@@ -122,6 +149,69 @@ Replay attack prevention
 Secure refresh logic
 
 ***
+### Threats Addressed
+
+- Refresh token replay attacks
+- Concurrent token refresh abuse
+- Stateless session vulnerabilities
+- Basic rate limit bypass (IP rotation)
+
+***
+## How It Works Internally
+Authenik8-core is designed around stateful JWT authentication to address real-world attack scenarios.
+## Refresh Token Rotation
+
+Each refresh token includes a unique identifier (jti).
+Flow:
+
+Token is issued with a jti
+
+jti is stored in Redis
+On refresh:
+
+Token is validated
+jti is checked against Redis
+
+If valid:
+
+Old token is invalidated
+New token is issued with a new jti
+
+## Replay Attack Detection
+
+If a refresh token is reused:
+
+The jti no longer exists or is marked as used
+The request is rejected immediately
+This prevents:
+
+Token replay attacks
+Concurrent refresh abuse
+
+## Stateful Session Control
+Unlike traditional JWT systems:
+Sessions are tracked in Redis
+Tokens can be revoked
+Logout is fully enforced
+
+## Security Layer
+Authenik8-core includes built-in middleware for:
+Rate limiting
+IP-based controls
+Secure headers (Helmet)
+These operate alongside authentication to provide: 👉 a unified security layer
+
+## Why Stateful Matters
+Stateless JWT:
+Cannot revoke tokens easily
+Cannot detect reuse
+Cannot track behavior
+Authenik8-core:
+Tracks token lifecycle
+Detects anomalies
+Enables real control over sessions
+***
+
 
 ## Use Cases
 
@@ -135,5 +225,5 @@ Systems requiring session control
 ## Final Thought
 
 JWT alone is not an authentication system.
-Authenik8 makes it one.
+Authenik8-core makes it one.
 ***
