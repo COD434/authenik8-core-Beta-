@@ -30,7 +30,7 @@ const tokenStore = new RedisTokenStore(redisClient);
 	});
 
 	const security = new SecurityModule({
-	redisClient:config.redis,
+	redisClient:redisClient,
 	rateLimiterEnabled: true,
 	helmetEnabled:true,
 	whiteListEnabled:true

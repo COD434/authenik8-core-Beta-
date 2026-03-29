@@ -27,7 +27,7 @@ const createAuthenik8 = async (config) => {
         refreshTokenExpiry: (_d = config.jwtExpiry) !== null && _d !== void 0 ? _d : "7d"
     });
     const security = new ipService_1.SecurityModule({
-        redisClient: config.redis,
+        redisClient: redisClient,
         rateLimiterEnabled: true,
         helmetEnabled: true,
         whiteListEnabled: true
