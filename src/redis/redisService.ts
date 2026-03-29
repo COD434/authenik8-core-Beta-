@@ -29,7 +29,7 @@ let redisClientInstance:RedisCon | null = null
 let redisStoreInstance:RedisStore |null = null
 
 const DEFAULT_REDIS_CONFIG: RedisConfig = {
-host:process.env.REDIS_HOST ?? "redis",
+host:process.env.REDIS_HOST ?? "127.0.0.1",
 port: Number(process.env.REDIS_PORT ?? "6379"),
 maxRetriesPerRequest: 10,
 connectTimeout: 5000

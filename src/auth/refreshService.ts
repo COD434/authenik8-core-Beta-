@@ -41,7 +41,7 @@ export interface RefreshServiceOptions {
 	refreshTokenSecret:string;
 	accessTokenExpiry:SignOptions["expiresIn"];
 	rotateRefreshTokens?:boolean;
-	refreshTokenExpiry?:string;
+	refreshTokenExpiry?:string | number;
 }
 
 export interface RefreshResult{
@@ -56,7 +56,7 @@ private accessTokenSecret:string;
 private refreshTokenSecret:string;
 private accessTokenExpiry:SignOptions["expiresIn"];
 private rotateRefreshTokens:boolean;
-private refreshTokenExpiry:string;
+private refreshTokenExpiry:string | number;
 private lock:RedisLock;
 
 constructor(options:RefreshServiceOptions){

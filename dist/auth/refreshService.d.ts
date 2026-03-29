@@ -22,7 +22,7 @@ export interface RefreshServiceOptions {
     refreshTokenSecret: string;
     accessTokenExpiry: SignOptions["expiresIn"];
     rotateRefreshTokens?: boolean;
-    refreshTokenExpiry?: string;
+    refreshTokenExpiry?: string | number;
 }
 export interface RefreshResult {
     accessToken: string;

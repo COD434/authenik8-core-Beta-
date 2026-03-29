@@ -12,7 +12,7 @@ dotenv_1.default.config();
 let redisClientInstance = null;
 let redisStoreInstance = null;
 const DEFAULT_REDIS_CONFIG = {
-    host: (_a = process.env.REDIS_HOST) !== null && _a !== void 0 ? _a : "redis",
+    host: (_a = process.env.REDIS_HOST) !== null && _a !== void 0 ? _a : "127.0.0.1",
     port: Number((_b = process.env.REDIS_PORT) !== null && _b !== void 0 ? _b : "6379"),
     maxRetriesPerRequest: 10,
     connectTimeout: 5000

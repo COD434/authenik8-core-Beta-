@@ -9,12 +9,12 @@ const jwtAuth_1 = require("./auth/jwtAuth");
 const redisService_1 = require("./redis/redisService");
 const RedisTokenStore_1 = require("./storage/RedisTokenStore");
 const createAuthenik8 = async (config) => {
-    var _a;
+    var _a, _b, _c, _d;
     const redisClient = (_a = config.redis) !== null && _a !== void 0 ? _a : await (0, redisService_1.initializeRedisClient)();
     const tokenStore = new RedisTokenStore_1.RedisTokenStore(redisClient);
     const jwtService = new jwtAuth_1.JWTService({
         jwtSecret: config.jwtSecret,
-        expiry: config.jwtExpiry,
+        expiry: (_b = config.jwtExpiry) !== null && _b !== void 0 ? _b : "15m",
         redisClient: redisClient
     });
     const refreshService = new refreshService_1.RefreshService({
@@ -22,8 +22,9 @@ const createAuthenik8 = async (config) => {
         redisClient,
         accessTokenSecret: config.jwtSecret,
         refreshTokenSecret: config.refreshSecret,
-        accessTokenExpiry: config.jwtExpiry,
-        rotateRefreshTokens: true
+        accessTokenExpiry: (_c = config.jwtExpiry) !== null && _c !== void 0 ? _c : "15m",
+        rotateRefreshTokens: true,
+        refreshTokenExpiry: (_d = config.jwtExpiry) !== null && _d !== void 0 ? _d : "7d"
     });
     const security = new ipService_1.SecurityModule({
         redisClient: config.redis,

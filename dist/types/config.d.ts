@@ -2,7 +2,7 @@ import { SignOptions } from "jsonwebtoken";
 import { Redis } from "ioredis";
 export interface Authenik8Config {
     jwtSecret: string;
-    jwtExpiry: SignOptions["expiresIn"];
+    jwtExpiry?: SignOptions["expiresIn"];
     refreshSecret: string;
     redis?: Redis;
 }

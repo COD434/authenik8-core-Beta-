@@ -15,7 +15,7 @@ const tokenStore = new RedisTokenStore(redisClient);
 
 	const jwtService =new JWTService({
 	jwtSecret:config.jwtSecret,
-	expiry:config.jwtExpiry,
+	expiry:config.jwtExpiry ?? "15m",
 	redisClient:redisClient
 	});
 
@@ -24,8 +24,9 @@ const tokenStore = new RedisTokenStore(redisClient);
 	redisClient,
 	accessTokenSecret:config.jwtSecret,
 	refreshTokenSecret:config.refreshSecret,
-	accessTokenExpiry:config.jwtExpiry,
-	rotateRefreshTokens:true
+	accessTokenExpiry:config.jwtExpiry ?? "15m",
+	rotateRefreshTokens:true,
+	refreshTokenExpiry:config.jwtExpiry ?? "7d"
 	});
 
 	const security = new SecurityModule({
