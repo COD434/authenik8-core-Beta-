@@ -8,8 +8,10 @@ const adminService_1 = require("./middleware/adminService");
 const jwtAuth_1 = require("./auth/jwtAuth");
 const redisService_1 = require("./redis/redisService");
 const RedisTokenStore_1 = require("./storage/RedisTokenStore");
+const core_1 = require("./oauth/providers/core");
 const createAuthenik8 = async (config) => {
     var _a, _b, _c, _d;
+    const oauth = config.oauth ? (0, core_1.createOAuth)(config.oauth) : undefined;
     const redisClient = (_a = config.redis) !== null && _a !== void 0 ? _a : await (0, redisService_1.initializeRedisClient)();
     const tokenStore = new RedisTokenStore_1.RedisTokenStore(redisClient);
     const jwtService = new jwtAuth_1.JWTService({
@@ -53,7 +55,8 @@ const createAuthenik8 = async (config) => {
         requireAdmin: (0, adminService_1.requireAdmin)({ jwtSecret: config.jwtSecret,
             redis: redisClient
         }),
-        incognito: guestModeService_1.Incognito
+        incognito: guestModeService_1.Incognito,
+        oauth
     };
 };
 exports.createAuthenik8 = createAuthenik8;

@@ -1,4 +1,13 @@
 
+
+
+import { OAuthProfile } from "../oauth/providers/types";
+
+type GoogleProvider = {
+  redirect: (req: any, res: any) => void;
+  handleCallback: (req: any) => Promise<{ profile: OAuthProfile }>;
+};
+
 export interface Authenik8Instance {
   signToken: (payload: any) => string;
   verifyToken: (token: string) => any;
@@ -19,4 +28,7 @@ export interface Authenik8Instance {
   incognito: any;
 
   redis?: any;
+  oauth?: {
+    google?: GoogleProvider;
+  };
 }

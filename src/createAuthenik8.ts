@@ -7,8 +7,12 @@ import {JWTService} from "./auth/jwtAuth"
 import { initializeRedisClient } from "./redis/redisService"
 import {Authenik8Instance} from "./types/public"
 import {RedisTokenStore} from "./storage/RedisTokenStore"
+import { createOAuth } from "./oauth/providers/core";
+
 
 export const createAuthenik8 = async (config:Authenik8Config): Promise<Authenik8Instance> =>{
+
+const oauth = config.oauth ? createOAuth(config.oauth) : undefined;
 
 const redisClient = config.redis ?? await initializeRedisClient()
 const tokenStore = new RedisTokenStore(redisClient);
@@ -62,7 +66,7 @@ requireAdmin :requireAdmin({ jwtSecret:
 	config.jwtSecret,
 			   redis:redisClient
 }),
-incognito:Incognito
-
+incognito:Incognito,
+oauth
 }
 }
