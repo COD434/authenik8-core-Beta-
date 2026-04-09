@@ -59,7 +59,6 @@ class RefreshService {
         if (!lockValue) {
             throw new InvalidTokenError("Concurrent refresh detected");
         }
-        //const storedToken= await this.tokenStore.get(`refresh:${decoded.userId}`)
         try {
             const key = `refresh:${decoded.userId}`;
             const storedToken = await this.tokenStore.get(key);

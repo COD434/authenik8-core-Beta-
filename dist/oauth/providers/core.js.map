@@ -1,1 +1,0 @@
-{"version":3,"file":"core.js","sourceRoot":"","sources":["../../../src/oauth/providers/core.ts"],"names":[],"mappings":";;AAGA,kCAMC;AATD,qCAAgD;AAGhD,SAAgB,WAAW,CAAC,MAAoC;IAC9D,OAAO;QACL,MAAM,EAAE,MAAM,CAAC,MAAM;YACnB,CAAC,CAAC,IAAA,6BAAoB,EAAC,MAAM,CAAC,MAAM,CAAC;YACrC,CAAC,CAAC,SAAS;KACd,CAAC;AACJ,CAAC"}

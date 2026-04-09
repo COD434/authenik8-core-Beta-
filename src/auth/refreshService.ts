@@ -109,7 +109,6 @@ const lockKey = `lock:${decoded.userId}`;
     throw new InvalidTokenError("Concurrent refresh detected");
   }
 
-//const storedToken= await this.tokenStore.get(`refresh:${decoded.userId}`)
 
 try{
 const key = `refresh:${decoded.userId}`;
