@@ -56,6 +56,7 @@ class RefreshService {
         }
         const lockKey = `lock:${decoded.userId}`;
         const lockValue = await this.lock.acquire(lockKey, 5000);
+        let hasLock = !!lockValue;
         if (!lockValue) {
             throw new InvalidTokenError("Concurrent refresh detected");
         }
@@ -74,7 +75,7 @@ class RefreshService {
                     throw new Error("TokenStore must implement getset for atomic refresh rotation");
                 }
                 const PreviousToken = await this.tokenStore.getset(key, newRefreshToken, 60 * 60 * 24 * 7);
-                if (PreviousToken !== refreshToken) {
+                if (PreviousToken !== refreshToken && PreviousToken !== storedToken) {
                     throw new InvalidTokenError("Concurrent refresh detected");
                 }
             }
@@ -84,7 +85,7 @@ class RefreshService {
             };
         }
         finally {
-            if (lockValue)
+            if (hasLock && lockValue)
                 await this.lock.release(lockKey, lockValue);
         }
     }
