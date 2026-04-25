@@ -10,23 +10,22 @@ const redisService_1 = require("./redis/redisService");
 const RedisTokenStore_1 = require("./storage/RedisTokenStore");
 const core_1 = require("./oauth/core");
 const identityEngine_1 = require("./oauth/brain/identityEngine");
-const memoryAdapter_1 = require("./oauth/adapters/memoryAdapter");
+const redisAdapter_1 = require("./oauth/adapters/redisAdapter");
 const createAuthenik8 = async (config) => {
-    var _a, _b, _c, _d;
-    const redisClient = (_a = config.redis) !== null && _a !== void 0 ? _a : await (0, redisService_1.initializeRedisClient)();
+    const redisClient = config.redis ?? await (0, redisService_1.initializeRedisClient)();
     const tokenStore = new RedisTokenStore_1.RedisTokenStore(redisClient);
     const refreshService = new refreshService_1.RefreshService({
         tokenStore,
         redisClient,
         accessTokenSecret: config.jwtSecret,
         refreshTokenSecret: config.refreshSecret,
-        accessTokenExpiry: (_b = config.jwtExpiry) !== null && _b !== void 0 ? _b : "15m",
+        accessTokenExpiry: config.jwtExpiry ?? "15m",
         rotateRefreshTokens: true,
-        refreshTokenExpiry: (_c = config.jwtExpiry) !== null && _c !== void 0 ? _c : "7d",
+        refreshTokenExpiry: config.jwtExpiry ?? "7d",
     });
     const jwtService = new jwtAuth_1.JWTService({
         jwtSecret: config.jwtSecret,
-        expiry: (_d = config.jwtExpiry) !== null && _d !== void 0 ? _d : "15m",
+        expiry: config.jwtExpiry ?? "15m",
         redisClient: redisClient
     });
     const issueTokens = async (payload) => {
@@ -47,7 +46,7 @@ const createAuthenik8 = async (config) => {
     // =========================
     // 5. Identity Engine (NO circular deps)
     // =========================
-    const identityEngine = (0, identityEngine_1.createIdentityEngine)(memoryAdapter_1.memoryAdapter, tokenService);
+    const identityEngine = (0, identityEngine_1.createIdentityEngine)(config.identityAdapter ?? (0, redisAdapter_1.createRedisIdentityAdapter)(redisClient), tokenService);
     // =========================
     // 6. OAuth (depends on identity engine)
     // =========================
@@ -60,17 +59,32 @@ const createAuthenik8 = async (config) => {
         : undefined;
     // ===============
     const issueTokensFromProfile = async (profile) => {
-        return issueTokens({
-            userId: profile.providerId,
-            email: profile.email,
-            role: "user",
+        if (!isVerifiedOAuthEmail(profile.email_verified)) {
+            throw new Error("OAuth profile email must be verified before issuing tokens");
+        }
+        const result = await identityEngine.resolveOAuth({
+            profile,
+            mode: "login",
+            userId: null,
         });
+        if (result.type === "EXISTING_PROVIDER_LOGIN" ||
+            result.type === "NEW_USER_CREATION") {
+            return {
+                accessToken: result.accessToken,
+                refreshToken: result.refreshToken,
+            };
+        }
+        if (result.type === "LINK_REQUIRED") {
+            throw new Error(result.message);
+        }
+        throw new Error("OAuth token issuance failed");
     };
     const security = new ipService_1.SecurityModule({
         redisClient: redisClient,
         rateLimiterEnabled: true,
         helmetEnabled: true,
-        whiteListEnabled: true
+        whiteListEnabled: true,
+        trustProxyHeaders: config.trustProxyHeaders ?? false,
     });
     return {
         //auth
@@ -93,11 +107,15 @@ const createAuthenik8 = async (config) => {
         requireAdmin: (0, adminService_1.requireAdmin)({ jwtSecret: config.jwtSecret,
             redis: redisClient
         }),
-        incognito: guestModeService_1.Incognito,
+        incognito: (0, guestModeService_1.createIncognito)({
+            jwtSecret: config.jwtSecret,
+            guestToken: jwtService.guestToken.bind(jwtService),
+        }),
         oauth,
         issueTokens,
         issueTokensFromProfile
     };
 };
 exports.createAuthenik8 = createAuthenik8;
+const isVerifiedOAuthEmail = (value) => value === true || value === "true";
 //# sourceMappingURL=createAuthenik8.js.map

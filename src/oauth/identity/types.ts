@@ -3,7 +3,8 @@ export type IdentityState =
   | "EXISTING_EMAIL_CONFLICT"
   | "NEW_USER_CREATION"
   | "LINK_PROVIDER"
-  | "INVALID_LINK_REQUEST";
+  | "INVALID_LINK_REQUEST"
+  | "LINK_REQUIRED"
 
   export type IdentityContext = {
   email: string;
@@ -41,4 +42,10 @@ export type IdentityResult =
   | {
       type: "INVALID_LINK_REQUEST";
       message: string;
-    };
+    }
+  | { 
+	  type: "LINK_REQUIRED";
+	  message:string;
+	  email:string;
+	  provider:string;
+  }

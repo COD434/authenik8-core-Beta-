@@ -1,7 +1,7 @@
 import {SecurityModule} from "./security/ipService";
 import  {RefreshService } from "./auth/refreshService"
 import {Authenik8Config} from "./types/config";
-import  {Incognito} from "./auth/guestModeService"
+import  {createIncognito} from "./auth/guestModeService"
 import {requireAdmin} from "./middleware/adminService";
 import {JWTService} from "./auth/jwtAuth"
 import { initializeRedisClient } from "./redis/redisService"
@@ -11,7 +11,7 @@ import { createOAuth } from "./oauth/core";
 import { TokenPayload, TokenPair } from "./types/tokens";
 import { OAuthProfile } from "./oauth/types";
 import { createIdentityEngine } from "./oauth/brain/identityEngine";
-import { memoryAdapter } from "./oauth/adapters/memoryAdapter";
+import { createRedisIdentityAdapter } from "./oauth/adapters/redisAdapter";
 
 
 export const createAuthenik8 = async (config:Authenik8Config): Promise<Authenik8Instance> =>{
@@ -68,7 +68,7 @@ const refreshService = new RefreshService({
   // 5. Identity Engine (NO circular deps)
   // =========================
   const identityEngine = createIdentityEngine(
-    memoryAdapter,
+    config.identityAdapter ?? createRedisIdentityAdapter(redisClient),
     tokenService
   );
 
@@ -87,18 +87,39 @@ const refreshService = new RefreshService({
 const issueTokensFromProfile = async (
   profile: OAuthProfile
 ): Promise<TokenPair> => {
-  return issueTokens({
-    userId: profile.providerId,
-    email: profile.email,
-    role: "user",
+  if (!isVerifiedOAuthEmail(profile.email_verified)) {
+    throw new Error("OAuth profile email must be verified before issuing tokens");
+  }
+
+  const result = await identityEngine.resolveOAuth({
+    profile,
+    mode: "login",
+    userId: null,
   });
+
+  if (
+    result.type === "EXISTING_PROVIDER_LOGIN" ||
+    result.type === "NEW_USER_CREATION"
+  ) {
+    return {
+      accessToken: result.accessToken,
+      refreshToken: result.refreshToken,
+    };
+  }
+
+  if (result.type === "LINK_REQUIRED") {
+    throw new Error(result.message);
+  }
+
+  throw new Error("OAuth token issuance failed");
 };
 
 	const security = new SecurityModule({
 	redisClient:redisClient,
 	rateLimiterEnabled: true,
 	helmetEnabled:true,
-	whiteListEnabled:true
+	whiteListEnabled:true,
+	trustProxyHeaders: config.trustProxyHeaders ?? false,
 	});
 return{
 	//auth
@@ -127,9 +148,14 @@ requireAdmin :requireAdmin({ jwtSecret:
 	config.jwtSecret,
 			   redis:redisClient
 }),
-incognito:Incognito,
+incognito:createIncognito({
+  jwtSecret: config.jwtSecret,
+  guestToken: jwtService.guestToken.bind(jwtService),
+}),
 oauth,
 issueTokens,
 issueTokensFromProfile
 }
 }
+const isVerifiedOAuthEmail = (value: OAuthProfile["email_verified"]): boolean =>
+  value === true || value === "true";

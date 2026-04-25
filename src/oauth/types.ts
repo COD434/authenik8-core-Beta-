@@ -5,6 +5,7 @@ export type OAuthProfile = {
   name?: string;
   provider: Provider;
   providerId: string;
+  email_verified: boolean | string;
 };
 
 export type GoogleOAuthConfig = {

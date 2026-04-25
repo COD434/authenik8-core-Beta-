@@ -1,24 +1,35 @@
 "use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.Incognito = void 0;
-const verifyToken = (token) => ({
-    id: "guest",
-    type: token === "temp-token" ? "guest-mode" : "authenticated"
-});
-const guestToken = () => "temp-token";
-const Incognito = (req, res, next) => {
-    const authHeader = req.headers.authorization;
-    let token = authHeader === null || authHeader === void 0 ? void 0 : authHeader.split(" ")[1];
-    let user = token ? verifyToken(token) : null;
-    if (!user) {
-        const GToken = guestToken();
-        user = verifyToken(GToken);
-        res.setHeader("X-Guest-Token", GToken);
-    }
-    if ((user === null || user === void 0 ? void 0 : user.type) === "guest-mode") {
-    }
-    res.user = user;
-    next();
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
 };
-exports.Incognito = Incognito;
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.createIncognito = void 0;
+const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
+const createIncognito = (options) => {
+    return (req, res, next) => {
+        const authHeader = req.headers.authorization;
+        const token = authHeader?.startsWith("Bearer ")
+            ? authHeader.split(" ")[1]
+            : undefined;
+        if (!token) {
+            const guestToken = options.guestToken();
+            const user = jsonwebtoken_1.default.verify(guestToken, options.jwtSecret);
+            req.user = user;
+            res.setHeader("X-Guest-Token", guestToken);
+            return next();
+        }
+        try {
+            const user = jsonwebtoken_1.default.verify(token, options.jwtSecret);
+            req.user = {
+                ...user,
+                type: user.type ?? "authenticated",
+            };
+            return next();
+        }
+        catch {
+            return res.status(401).json({ error: "Invalid or expired token" });
+        }
+    };
+};
+exports.createIncognito = createIncognito;
 //# sourceMappingURL=guestModeService.js.map

@@ -23,14 +23,20 @@ class InvalidTokenError extends Error {
 exports.InvalidTokenError = InvalidTokenError;
 class RefreshService {
     constructor(options) {
-        var _a, _b, _c;
         this.tokenStore = options.tokenStore;
         this.accessTokenSecret = options.accessTokenSecret;
         this.refreshTokenSecret = options.refreshTokenSecret;
-        this.accessTokenExpiry = (_a = options.accessTokenExpiry) !== null && _a !== void 0 ? _a : "15m";
-        this.rotateRefreshTokens = (_b = options.rotateRefreshTokens) !== null && _b !== void 0 ? _b : false;
-        this.refreshTokenExpiry = (_c = options.refreshTokenExpiry) !== null && _c !== void 0 ? _c : "7d";
+        this.accessTokenExpiry = options.accessTokenExpiry ?? "15m";
+        this.rotateRefreshTokens = options.rotateRefreshTokens ?? false;
+        this.refreshTokenExpiry = options.refreshTokenExpiry ?? "7d";
         this.lock = new lockHelper_1.RedisLock(options.redisClient);
+        this.redisClient = options.redisClient;
+    }
+    async persistSessionToken(userId, token) {
+        const decoded = jsonwebtoken_1.default.decode(token);
+        const now = Math.floor(Date.now() / 1000);
+        const ttl = decoded?.exp ? Math.max(decoded.exp - now, 1) : 3600;
+        await this.redisClient.set(`session:${userId}`, token, "EX", ttl);
     }
     async generateRefreshToken(payload) {
         if (!payload.userId)
@@ -67,6 +73,7 @@ class RefreshService {
                 throw new InvalidTokenError();
             }
             const newAccessToken = jsonwebtoken_1.default.sign({ userId: decoded.userId, email: decoded.email }, this.accessTokenSecret, { expiresIn: this.accessTokenExpiry });
+            await this.persistSessionToken(decoded.userId, newAccessToken);
             let newRefreshToken;
             if (this.rotateRefreshTokens && this.tokenStore.set) {
                 const key = `refresh:${decoded.userId}`;
@@ -81,7 +88,7 @@ class RefreshService {
             }
             return {
                 accessToken: newAccessToken,
-                refreshToken: newRefreshToken !== null && newRefreshToken !== void 0 ? newRefreshToken : refreshToken
+                refreshToken: newRefreshToken ?? refreshToken
             };
         }
         finally {

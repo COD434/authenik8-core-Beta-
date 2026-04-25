@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<testsuites name="vitest tests" tests="12" failures="0" errors="0" time="0.386215">
+    <testsuite name="src/tests/incognito.unit.test.ts" timestamp="2026-04-25T16:56:27.154Z" hostname="localhost" tests="3" failures="0" errors="0" skipped="0" time="0.145629231">
+        <testcase classname="src/tests/incognito.unit.test.ts" name="createIncognito &gt; issues a signed guest token when no bearer token is present" time="0.097701769">
+        </testcase>
+        <testcase classname="src/tests/incognito.unit.test.ts" name="createIncognito &gt; accepts a valid authenticated bearer token" time="0.025151077">
+        </testcase>
+        <testcase classname="src/tests/incognito.unit.test.ts" name="createIncognito &gt; rejects invalid bearer tokens" time="0.016605231">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/tests/jwtAuth.unit.test.ts" timestamp="2026-04-25T16:56:27.163Z" hostname="localhost" tests="3" failures="0" errors="0" skipped="0" time="0.044317231">
+        <testcase classname="src/tests/jwtAuth.unit.test.ts" name="JWTService &gt; signToken produces a token that verifyToken accepts" time="0.030522769">
+        </testcase>
+        <testcase classname="src/tests/jwtAuth.unit.test.ts" name="JWTService &gt; verifyToken returns null for an invalid token" time="0.001399692">
+        </testcase>
+        <testcase classname="src/tests/jwtAuth.unit.test.ts" name="JWTService &gt; guestToken emits a guest payload" time="0.007837846">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/tests/requireAdmin.unit.test.ts" timestamp="2026-04-25T16:56:27.171Z" hostname="localhost" tests="4" failures="0" errors="0" skipped="0" time="0.176896538">
+        <testcase classname="src/tests/requireAdmin.unit.test.ts" name="requireAdmin &gt; rejects requests without a token" time="0.095216">
+        </testcase>
+        <testcase classname="src/tests/requireAdmin.unit.test.ts" name="requireAdmin &gt; rejects non-admin roles" time="0.035197307">
+        </testcase>
+        <testcase classname="src/tests/requireAdmin.unit.test.ts" name="requireAdmin &gt; rejects tokens without an admin role" time="0.020745231">
+        </testcase>
+        <testcase classname="src/tests/requireAdmin.unit.test.ts" name="requireAdmin &gt; allows admin tokens" time="0.019076846">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/tests/securityModule.unit.test.ts" timestamp="2026-04-25T16:56:27.178Z" hostname="localhost" tests="2" failures="0" errors="0" skipped="0" time="0.019372">
+        <testcase classname="src/tests/securityModule.unit.test.ts" name="SecurityModule whitelist middleware &gt; does not trust x-forwarded-for by default" time="0.00873177">
+        </testcase>
+        <testcase classname="src/tests/securityModule.unit.test.ts" name="SecurityModule whitelist middleware &gt; can trust x-forwarded-for when explicitly enabled" time="0.001001231">
+        </testcase>
+    </testsuite>
+</testsuites>

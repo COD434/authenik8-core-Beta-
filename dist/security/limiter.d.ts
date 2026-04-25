@@ -1,5 +1,16 @@
+import { Redis as RedisClient } from "ioredis";
 import { Request, Response, NextFunction } from "express";
-export declare const initializeRateLimiter: () => Promise<void>;
+declare class TokenBucket {
+    private redis;
+    constructor(redisClient: RedisClient);
+    consume(key: string, capacity: number, refillRate: number): Promise<{
+        allowed: boolean;
+        remaining: number;
+        retryAfter?: number;
+    }>;
+}
+export declare const initializeRateLimiter: () => Promise<TokenBucket>;
 export declare const OTPLimiterMiddleware: (req: Request, res: Response, next: NextFunction) => Promise<void>;
 export declare const LoginLimiterMiddleware: () => (req: Request, res: Response, next: NextFunction) => Promise<void>;
+export {};
 //# sourceMappingURL=limiter.d.ts.map

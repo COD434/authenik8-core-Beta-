@@ -9,8 +9,8 @@ const exists = await this.userStore.findByEmail(email)
 if (exists){
 throw new Error("If a record of user exists an email will be sent");
 }
-return
-this.userStore.create({email,password});
+
+await this.userStore.create({email,password});
 }
 
 }

@@ -2,6 +2,7 @@ import { OAuthProfile } from "../types";
 import { memoryAdapter } from "../adapters/memoryAdapter";
 import { IdentityEngine } from "./types";
 import { IdentityContext, IdentityResult } from "../identity/types";
+import {identityPolicy} from "./identityPolicy";
 
 const auditLogs: any[] = [];
 type IdentityAdapter = {
@@ -18,10 +19,13 @@ type IdentityAdapter = {
     providerId: string
   ): Promise<void>;
 };
+
+
 type TokenService = {
   signAccessToken(payload: any): string;
   generateRefreshToken(payload: any): Promise<string>;
 };
+
 
 export function createIdentityEngine(
 	adapter:IdentityAdapter,
@@ -46,11 +50,14 @@ if (!ctx.email) {
         ctx.providerId
       );
 
-      if (existingProvider) {
-const payload ={userId:existingProvider.id}
-        return {
-	type:"EXISTING_PROVIDER_LOGIN",
-          user: existingProvider,
+	      if (existingProvider) {
+	const payload ={
+		userId:existingProvider.id,
+		email: existingProvider.email,
+	}
+	        return {
+		type:"EXISTING_PROVIDER_LOGIN",
+	          user: existingProvider,
 accessToken:tokenService.signAccessToken(payload),
 refreshToken: await tokenService.generateRefreshToken(payload),
         };
@@ -101,16 +108,32 @@ let existingUser = await adapter.findUserByEmail(ctx.email);
 
 
 if (existingUser) {
-  const payload = { userId: existingUser.id };
+		const isVerified = args.profile.email_verified === true || args.profile.email_verified === "true";
 
-  return {
-    type: "EXISTING_PROVIDER_LOGIN",
-    user: existingUser,
-    accessToken: tokenService.signAccessToken(payload),
-    refreshToken: await tokenService.generateRefreshToken(payload),
-  };
+const canAutoLink = (isVerified && identityPolicy.autoLinkOnVerifiedEmailMatch) || (!isVerified && identityPolicy.allowUnverifiedAutoLink) 
 
+if(!canAutoLink){
+	return{
+		type:"LINK_REQUIRED",
+		message:"please link manually",
+		email: ctx.email,
+		provider:ctx.provider,
+
+	}
 }
+	  const oauthPayload = {
+	    userId: existingUser.id,
+	    email: existingUser.email,
+	  };
+
+	  return {
+	    type: "EXISTING_PROVIDER_LOGIN",
+	    user: existingUser,
+	    accessToken: tokenService.signAccessToken(oauthPayload),
+	    refreshToken: await tokenService.generateRefreshToken(oauthPayload),
+	  };
+
+	}
 
 
       // 4. Create new user
@@ -123,7 +146,10 @@ if (existingUser) {
   throw new Error("Missing providerId");
 }
 
-const payload = { userId: user.id };
+const payload = {
+  userId: user.id,
+  email: user.email,
+};
 auditLogs.push({
   userId: user.id,
   action: "USER_CREATED",

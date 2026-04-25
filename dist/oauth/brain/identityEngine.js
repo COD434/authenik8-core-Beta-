@@ -1,17 +1,17 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.createIdentityEngine = createIdentityEngine;
+const identityPolicy_1 = require("./identityPolicy");
 const auditLogs = [];
 function createIdentityEngine(adapter, tokenService) {
     return {
         async resolveOAuth(args) {
-            var _a;
             const ctx = {
                 email: args.profile.email,
                 provider: args.profile.provider,
                 providerId: args.profile.providerId,
                 mode: args.mode,
-                userId: (_a = args.userId) !== null && _a !== void 0 ? _a : undefined,
+                userId: args.userId ?? undefined,
             };
             if (!ctx.email) {
                 throw new Error("OAuth profile missing email");
@@ -19,7 +19,10 @@ function createIdentityEngine(adapter, tokenService) {
             // 1. Existing provider
             const existingProvider = await adapter.findUserByProvider(ctx.provider, ctx.providerId);
             if (existingProvider) {
-                const payload = { userId: existingProvider.id };
+                const payload = {
+                    userId: existingProvider.id,
+                    email: existingProvider.email,
+                };
                 return {
                     type: "EXISTING_PROVIDER_LOGIN",
                     user: existingProvider,
@@ -60,12 +63,25 @@ function createIdentityEngine(adapter, tokenService) {
             // 3. Check existing by email OR provider (idempotency safety)
             let existingUser = await adapter.findUserByEmail(ctx.email);
             if (existingUser) {
-                const payload = { userId: existingUser.id };
+                const isVerified = args.profile.email_verified === true || args.profile.email_verified === "true";
+                const canAutoLink = (isVerified && identityPolicy_1.identityPolicy.autoLinkOnVerifiedEmailMatch) || (!isVerified && identityPolicy_1.identityPolicy.allowUnverifiedAutoLink);
+                if (!canAutoLink) {
+                    return {
+                        type: "LINK_REQUIRED",
+                        message: "please link manually",
+                        email: ctx.email,
+                        provider: ctx.provider,
+                    };
+                }
+                const oauthPayload = {
+                    userId: existingUser.id,
+                    email: existingUser.email,
+                };
                 return {
                     type: "EXISTING_PROVIDER_LOGIN",
                     user: existingUser,
-                    accessToken: tokenService.signAccessToken(payload),
-                    refreshToken: await tokenService.generateRefreshToken(payload),
+                    accessToken: tokenService.signAccessToken(oauthPayload),
+                    refreshToken: await tokenService.generateRefreshToken(oauthPayload),
                 };
             }
             // 4. Create new user
@@ -77,7 +93,10 @@ function createIdentityEngine(adapter, tokenService) {
             if (!ctx.providerId) {
                 throw new Error("Missing providerId");
             }
-            const payload = { userId: user.id };
+            const payload = {
+                userId: user.id,
+                email: user.email,
+            };
             auditLogs.push({
                 userId: user.id,
                 action: "USER_CREATED",

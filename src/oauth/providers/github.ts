@@ -6,6 +6,21 @@ import { GitHubOAuthConfig, GoogleOAuthConfig } from "../types";
 import { linkProvider } from "../userStore";
 import type { IdentityEngine } from "../brain/types";
 
+type GitHubAccessTokenResponse = {
+  access_token?: string;
+};
+
+type GitHubEmailResponse = Array<{
+  email: string;
+  primary?: boolean;
+  verified?: boolean;
+}>;
+
+type GitHubUserResponse = {
+  id: number;
+  name?: string;
+};
+
 export function createGitHubProvider(config:GitHubOAuthConfig,
 				     redisClient:RedisClient,
 				    identityEngine:IdentityEngine) {
@@ -97,7 +112,7 @@ await redisClient.setex(
         body: params,
       });
 
-      const tokenData = await tokenRes.json();
+      const tokenData = await tokenRes.json() as GitHubAccessTokenResponse;
 
       if (!tokenData.access_token) {
         throw new Error("OAuthError: No access token from Github");
@@ -115,7 +130,7 @@ await redisClient.setex(
   throw new Error("OAuthError: Failed to fetch GitHub user");
 }
 
-      const userData = await userRes.json();
+      const userData = await userRes.json() as GitHubUserResponse;
 
       
       const emailRes = await fetch("https://api.github.com/user/emails", {
@@ -124,12 +139,14 @@ await redisClient.setex(
         },
       });
 
-      const emails = await emailRes.json();
+      const emails = await emailRes.json() as GitHubEmailResponse;
 
-      const primaryEmail = emails.find((e: any) => e.primary)?.email;
+      const primaryEmail = emails.find(
+        (email) => email.primary && email.verified
+      )?.email;
 
       if (!primaryEmail) {
-        throw new Error("OAuthError: No primary email  found");
+        throw new Error("OAuthError: No verified primary email found");
       }
 
       const profile: OAuthProfile = {
@@ -137,6 +154,7 @@ await redisClient.setex(
         name: userData.name,
         provider: "github",
         providerId: userData.id.toString(),
+	email_verified: true
       };
 
 

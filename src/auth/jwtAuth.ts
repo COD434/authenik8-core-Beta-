@@ -24,13 +24,6 @@ export class JWTService{
 private jwtSecret:string;
 private expiry?:SignOptions["expiresIn"]
 
-
-signToken(payload: object){
-return jwt.sign(payload,this.jwtSecret,{
-expiresIn:this.expiry || "1h"})
-};
-
-
 private redisclient?:any;
 private onGuestToken?: () => void;
 
@@ -42,6 +35,35 @@ this.redisclient = options.redisClient;
 this.onGuestToken = options.onGuestToken;
 
 }
+
+private persistSessionToken(payload: object, token: string){
+if (!this.redisclient) {
+return;
+}
+
+const userId = (payload as { userId?: string }).userId;
+
+if (!userId) {
+return;
+}
+
+const decoded = jwt.decode(token) as { exp?: number } | null;
+const now = Math.floor(Date.now() / 1000);
+const ttl = decoded?.exp ? Math.max(decoded.exp - now, 1) : 3600;
+
+void this.redisclient
+  .set(`session:${userId}`, token, "EX", ttl)
+  .catch((error: unknown) => {
+    console.error("Failed to persist session token:", error);
+  });
+}
+
+signToken(payload: object){
+const token = jwt.sign(payload,this.jwtSecret,{
+expiresIn:this.expiry || "1h"})
+this.persistSessionToken(payload, token);
+return token
+};
 
 
 guestToken(): string{
@@ -96,4 +118,3 @@ return res.status(403)
 }
 }
 }
-

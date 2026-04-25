@@ -6,6 +6,11 @@ import crypto from "crypto";
 import type { Redis as RedisClient } from "ioredis";
 import type { IdentityEngine } from "../brain/types";
 
+type GoogleTokenResponse = {
+  access_token?: string;
+  id_token?: string;
+};
+
 export function createGoogleProvider(config: GoogleOAuthConfig,
 				     redisClient:RedisClient, 
 				    identityEngine: IdentityEngine
@@ -104,7 +109,7 @@ const err = await tokenRes.text();
 throw new Error(`OAuthError:Token exchange failed->${err}`)
 }
 
-      const tokenData = await tokenRes.json();
+      const tokenData = await tokenRes.json() as GoogleTokenResponse;
 if(!tokenData.access_token){
 
 	throw new Error("OAuthError:No access token returned")
@@ -142,38 +147,8 @@ const profile: OAuthProfile = {
   name: payload.name,
   provider: "google",
   providerId: payload.sub,
+  email_verified:payload.email_verified ?? false
 };
-
-      const accessToken = tokenData.access_token;
-console.log("Token data:",tokenData);
-      console.log("[OAuth] Fetching user profile...");
-
-      console.log("FINAL ENGINE INPUT:", {
-  profile,
-  mode,
-  userId,
-});
-
-      let result  
-      try{
-	      result = await identityEngine.resolveOAuth({
-  profile,
-  mode,
-  userId,
-})
-
-      }catch(err){
-      console.error("ENGINE ERROR:",err)
-      throw err;
-      }
-if (
-  result.type !== "INVALID_LINK_REQUEST" &&
-  result.type !== "EXISTING_EMAIL_CONFLICT" &&
-  !result.user
-) {
-  throw new Error("Invalid engine result: missing user");
-}
-						      
 
 await redisClient.del(`oauth:state:${state}`);
 
@@ -186,4 +161,3 @@ return {
     }
   }
 }
-

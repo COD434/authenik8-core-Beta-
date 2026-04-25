@@ -7,17 +7,10 @@ exports.JWTService = void 0;
 const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
 const crypto_1 = __importDefault(require("crypto"));
 class JWTService {
-    signToken(payload) {
-        return jsonwebtoken_1.default.sign(payload, this.jwtSecret, {
-            expiresIn: this.expiry || "1h"
-        });
-    }
-    ;
     constructor(options) {
         this.authenticateJWT = async (req, res, next) => {
-            var _a;
             const authHeader = req.headers.authorization;
-            const token = ((_a = req.cookies) === null || _a === void 0 ? void 0 : _a.token) || ((authHeader === null || authHeader === void 0 ? void 0 : authHeader.startsWith("Bearer ")) ? authHeader.split(" ")[1] : null);
+            const token = req.cookies?.token || (authHeader?.startsWith("Bearer ") ? authHeader.split(" ")[1] : null);
             if (!token) {
                 return res.status(401).json({ message: "Unauthorized" });
             }
@@ -44,6 +37,31 @@ class JWTService {
         this.redisclient = options.redisClient;
         this.onGuestToken = options.onGuestToken;
     }
+    persistSessionToken(payload, token) {
+        if (!this.redisclient) {
+            return;
+        }
+        const userId = payload.userId;
+        if (!userId) {
+            return;
+        }
+        const decoded = jsonwebtoken_1.default.decode(token);
+        const now = Math.floor(Date.now() / 1000);
+        const ttl = decoded?.exp ? Math.max(decoded.exp - now, 1) : 3600;
+        void this.redisclient
+            .set(`session:${userId}`, token, "EX", ttl)
+            .catch((error) => {
+            console.error("Failed to persist session token:", error);
+        });
+    }
+    signToken(payload) {
+        const token = jsonwebtoken_1.default.sign(payload, this.jwtSecret, {
+            expiresIn: this.expiry || "1h"
+        });
+        this.persistSessionToken(payload, token);
+        return token;
+    }
+    ;
     guestToken() {
         const payload = {
             type: "guest",

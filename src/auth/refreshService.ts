@@ -58,6 +58,7 @@ private accessTokenExpiry:SignOptions["expiresIn"];
 private rotateRefreshTokens:boolean;
 private refreshTokenExpiry:string | number;
 private lock:RedisLock;
+private redisClient:any;
 
 constructor(options:RefreshServiceOptions){
 this.tokenStore =  options.tokenStore;
@@ -67,7 +68,16 @@ this.accessTokenExpiry= options.accessTokenExpiry ?? "15m";
 this.rotateRefreshTokens = options.rotateRefreshTokens ?? false;
 this.refreshTokenExpiry = options.refreshTokenExpiry ?? "7d"
 this.lock = new RedisLock(options.redisClient)
+this.redisClient = options.redisClient;
  }
+
+private async persistSessionToken(userId: string, token: string): Promise<void> {
+const decoded = jwt.decode(token) as { exp?: number } | null;
+const now = Math.floor(Date.now() / 1000);
+const ttl = decoded?.exp ? Math.max(decoded.exp - now, 1) : 3600;
+
+await this.redisClient.set(`session:${userId}`, token, "EX", ttl);
+}
 
 
  async generateRefreshToken(payload: TokenPayload): Promise<string> {
@@ -126,6 +136,8 @@ const newAccessToken = jwt.sign(
         this.accessTokenSecret,
         { expiresIn: this.accessTokenExpiry as jwt.SignOptions["expiresIn"] }
     );
+
+await this.persistSessionToken(decoded.userId, newAccessToken);
 
 let newRefreshToken:string | undefined;
 

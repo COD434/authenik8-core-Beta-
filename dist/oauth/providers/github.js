@@ -9,15 +9,14 @@ function createGitHubProvider(config, redisClient, identityEngine) {
     const { clientId, clientSecret, redirectUri } = config;
     return {
         redirect: async (req, res, mode = "login") => {
-            var _a, _b;
             if (res.headersSent) {
                 console.log("🚨 HEADERS ALREADY SENT — SKIPPING");
                 return;
             }
             const state = crypto_1.default.randomBytes(32).toString("hex");
-            const authUser = (_a = req.user) !== null && _a !== void 0 ? _a : null;
+            const authUser = req.user ?? null;
             await redisClient.setex(`oauth:state:${state}`, 300, JSON.stringify({
-                userId: (_b = authUser === null || authUser === void 0 ? void 0 : authUser.userId) !== null && _b !== void 0 ? _b : null,
+                userId: authUser?.userId ?? null,
                 mode,
             }));
             const url = new URL("https://github.com/login/oauth/authorize");
@@ -26,14 +25,13 @@ function createGitHubProvider(config, redisClient, identityEngine) {
             url.searchParams.set("scope", "read:user user:email");
             url.searchParams.set("state", state);
             console.log("REDIRECT STATE:", {
-                userId: authUser === null || authUser === void 0 ? void 0 : authUser.userId,
+                userId: authUser?.userId,
                 mode,
             });
             res.redirect(url.toString());
             return;
         },
         handleCallback: async (req) => {
-            var _a;
             const code = req.query.code;
             const state = req.query.state;
             if (!state) {
@@ -78,15 +76,16 @@ function createGitHubProvider(config, redisClient, identityEngine) {
                 },
             });
             const emails = await emailRes.json();
-            const primaryEmail = (_a = emails.find((e) => e.primary)) === null || _a === void 0 ? void 0 : _a.email;
+            const primaryEmail = emails.find((email) => email.primary && email.verified)?.email;
             if (!primaryEmail) {
-                throw new Error("OAuthError: No primary email  found");
+                throw new Error("OAuthError: No verified primary email found");
             }
             const profile = {
                 email: primaryEmail,
                 name: userData.name,
                 provider: "github",
                 providerId: userData.id.toString(),
+                email_verified: true
             };
             await redisClient.del(`oauth:state:${state}`);
             return {

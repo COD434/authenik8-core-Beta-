@@ -13,7 +13,8 @@ export class RedisTokenStore {
 
 private log(action:string,key:string, value?:any){
 if (this.debug){
-console.log(`[Redis ${action}]`,{key, value})
+const safeValue = key.includes("refresh:") ? "<redacted>" : value;
+console.log(`[Redis ${action}]`,{key, value: safeValue})
  }
 }
  async storeRefreshToken(token:string,userId:string,ttl:number){
@@ -94,13 +95,13 @@ async blacklistToken(userId: string, ttl: number) {
     return exists === 1;
   }
 async set(key: string, value: string, expiry?: number): Promise<void> {
-  console.log("REDIS SET:", key, value);
-
   if (expiry) {
     await this.redis.set(key, value, "EX", expiry);
   } else {
     await this.redis.set(key, value);
   }
+
+  this.log("SET", key, value);
 }
 
 

@@ -12,7 +12,8 @@ class RedisTokenStore {
     }
     log(action, key, value) {
         if (this.debug) {
-            console.log(`[Redis ${action}]`, { key, value });
+            const safeValue = key.includes("refresh:") ? "<redacted>" : value;
+            console.log(`[Redis ${action}]`, { key, value: safeValue });
         }
     }
     async storeRefreshToken(token, userId, ttl) {
@@ -78,13 +79,13 @@ class RedisTokenStore {
         return exists === 1;
     }
     async set(key, value, expiry) {
-        console.log("REDIS SET:", key, value);
         if (expiry) {
             await this.redis.set(key, value, "EX", expiry);
         }
         else {
             await this.redis.set(key, value);
         }
+        this.log("SET", key, value);
     }
     async get(key) {
         return this.redis.get(key);

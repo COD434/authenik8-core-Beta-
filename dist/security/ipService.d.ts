@@ -15,6 +15,7 @@ export interface SecurityOptions {
     enableHelmet?: boolean;
     whiteListEnabled?: boolean;
     helmetEnabled?: boolean;
+    trustProxyHeaders?: boolean;
 }
 export declare class SecurityModule {
     private redisClient;
@@ -24,11 +25,13 @@ export declare class SecurityModule {
     private whiteListEnabled;
     private helmetEnabled;
     private rateLimiterEnabled;
+    private trustProxyHeaders;
     constructor(options?: SecurityOptions);
     isAllowed(ip: string): Promise<boolean>;
     addIP(ipOrCIDR: string, ttl?: number): Promise<void>;
     removeIP(ipOrCIDR: string): Promise<void>;
     listIPs(): Promise<string[]>;
+    private getClientIp;
     whiteListMiddleware(): (req: Request, res: Response, next: NextFunction) => Promise<void>;
     rateLimiterMiddleware(): (req: Request, res: Response, next: NextFunction) => void;
     helmetMiddleware(): RequestHandler;

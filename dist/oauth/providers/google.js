@@ -10,13 +10,12 @@ function createGoogleProvider(config, redisClient, identityEngine) {
     const { clientId, clientSecret, redirectUri } = config;
     return {
         redirect: async (req, res) => {
-            var _a, _b;
             try {
                 const state = crypto_1.default.randomBytes(32).toString("hex");
                 const mode = req.path.includes("link") ? "link" : "login";
-                const authUser = (_a = req.user) !== null && _a !== void 0 ? _a : null;
+                const authUser = req.user ?? null;
                 await redisClient.setex(`oauth:state:${state}`, 300, JSON.stringify({
-                    userId: (_b = authUser === null || authUser === void 0 ? void 0 : authUser.userId) !== null && _b !== void 0 ? _b : null,
+                    userId: authUser?.userId ?? null,
                     mode,
                 }));
                 const url = new URL("https://accounts.google.com/o/oauth2/v2/auth");
@@ -100,32 +99,8 @@ function createGoogleProvider(config, redisClient, identityEngine) {
                 name: payload.name,
                 provider: "google",
                 providerId: payload.sub,
+                email_verified: payload.email_verified ?? false
             };
-            const accessToken = tokenData.access_token;
-            console.log("Token data:", tokenData);
-            console.log("[OAuth] Fetching user profile...");
-            console.log("FINAL ENGINE INPUT:", {
-                profile,
-                mode,
-                userId,
-            });
-            let result;
-            try {
-                result = await identityEngine.resolveOAuth({
-                    profile,
-                    mode,
-                    userId,
-                });
-            }
-            catch (err) {
-                console.error("ENGINE ERROR:", err);
-                throw err;
-            }
-            if (result.type !== "INVALID_LINK_REQUEST" &&
-                result.type !== "EXISTING_EMAIL_CONFLICT" &&
-                !result.user) {
-                throw new Error("Invalid engine result: missing user");
-            }
             await redisClient.del(`oauth:state:${state}`);
             return {
                 profile,
