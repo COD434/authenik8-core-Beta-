@@ -2,7 +2,6 @@
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
-var _a, _b;
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.initializeRedisClient = exports.setupRedis = void 0;
 const dotenv_1 = __importDefault(require("dotenv"));
@@ -12,8 +11,8 @@ dotenv_1.default.config();
 let redisClientInstance = null;
 let redisStoreInstance = null;
 const DEFAULT_REDIS_CONFIG = {
-    host: (_a = process.env.REDIS_HOST) !== null && _a !== void 0 ? _a : "127.0.0.1",
-    port: Number((_b = process.env.REDIS_PORT) !== null && _b !== void 0 ? _b : "6379"),
+    host: process.env.REDIS_HOST ?? "127.0.0.1",
+    port: Number(process.env.REDIS_PORT ?? "6379"),
     maxRetriesPerRequest: 10,
     connectTimeout: 5000
 };
@@ -30,15 +29,15 @@ const validateRedisConfig = (config) => {
     }
 };
 const getRedisConfig = (options) => {
-    const port = (options === null || options === void 0 ? void 0 : options.port) ?
+    const port = options?.port ?
         Number(options.port) :
         process.env.REDIS_PORT ? Number(process.env.REDIS_PORT) :
             Number(DEFAULT_REDIS_CONFIG.port);
     const config = {
         ...DEFAULT_REDIS_CONFIG,
-        host: (options === null || options === void 0 ? void 0 : options.host) || process.env.REDIS_HOST || DEFAULT_REDIS_CONFIG.host,
+        host: options?.host || process.env.REDIS_HOST || DEFAULT_REDIS_CONFIG.host,
         port: port,
-        password: (options === null || options === void 0 ? void 0 : options.password) || process.env.REDIS_PASSWORD || undefined,
+        password: options?.password || process.env.REDIS_PASSWORD || undefined,
         ...options
     };
     validateRedisConfig(config);
@@ -46,8 +45,8 @@ const getRedisConfig = (options) => {
 };
 const setupRedis = async (options) => {
     try {
-        const config = getRedisConfig(options === null || options === void 0 ? void 0 : options.redisConfig);
-        const storeOptions = { ...DEFAULT_STORE_OPTIONS, ...options === null || options === void 0 ? void 0 : options.storeOptions };
+        const config = getRedisConfig(options?.redisConfig);
+        const storeOptions = { ...DEFAULT_STORE_OPTIONS, ...options?.storeOptions };
         const redisClient = new ioredis_1.default({
             host: config.host,
             port: Number(config.port),

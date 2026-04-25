@@ -36,7 +36,9 @@ export declare class RefreshService {
     private rotateRefreshTokens;
     private refreshTokenExpiry;
     private lock;
+    private redisClient;
     constructor(options: RefreshServiceOptions);
+    private persistSessionToken;
     generateRefreshToken(payload: TokenPayload): Promise<string>;
     refresh(refreshToken?: string): Promise<RefreshResult>;
 }

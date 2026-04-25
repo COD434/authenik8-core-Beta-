@@ -1,7 +1,6 @@
 
 import {Request, Response, NextFunction} from "express";
 import jwt from "jsonwebtoken";
-import {Authenik8Config} from "../types/config";
 import { RequireAdminOptions } from "../types/admin";
 
 
@@ -13,8 +12,7 @@ role: string;
 
 
 export const requireAdmin=(options:RequireAdminOptions)=>{
-	const {jwtSecret,redis}= options;
-return(req:Request, res:Response,next:NextFunction)=>{
+	return(req:Request, res:Response,next:NextFunction)=>{
 
 const authHeader = req.headers.authorization
 const cookieToken =req.cookies?.token
@@ -30,21 +28,18 @@ if (!token && cookieToken){
 token = cookieToken
 }
 
-if(!token){
-return res.status(401).json({error:"Unauthorized:No token provided"});}
-try{
-        const decoded = jwt.verify(token,options.jwtSecret) as JwtPayload;
+	if(!token){
+	return res.status(401).json({error:"Unauthorized:No token provided"});}
+	try{
+	        const decoded = jwt.verify(token,options.jwtSecret) as JwtPayload;
 
-        if(typeof decoded.role !== "string"){
-        res.status(403).json({error:"Forbidden: Admin only"})
-        }
-	const payload = decoded as JwtPayload
-
-(req as any).user =decoded;
-next();
-}catch(error){
-	return
-res.status(401).json({error:"Invalid or expired token"})
-}
-}
+	        if(decoded.role !== "admin"){
+	        return res.status(403).json({error:"Forbidden: Admin only"})
+	        }
+		(req as any).user =decoded;
+		return next();
+		}catch{
+		return res.status(401).json({error:"Invalid or expired token"})
+		}
+		}
 }

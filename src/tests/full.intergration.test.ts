@@ -1,9 +1,8 @@
-// tests/full.integration.test.ts
 import { createTestApp } from "./testApp";
 
 describe("Authenik8 Full Integration", () => {
   let request: any;
-  let auth: any;
+  let redisHelper: any;
 
   let accessToken: string;
   let refreshToken: string;
@@ -11,17 +10,15 @@ describe("Authenik8 Full Integration", () => {
   beforeAll(async () => {
     const setup = await createTestApp();
     request = setup.request;
-    auth = setup.auth;
+    redisHelper = setup.redisHelper;
   });
 
   afterAll(async () => {
-    if (auth.redis) {
-      await auth.redis.flushdb();
-      await auth.redis.quit();
+    if (redisHelper) {
+      await redisHelper.close();
     }
   });
 
-  //  LOGIN
   test("should login and receive tokens", async () => {
     const res = await request.post("/login");
 
@@ -33,7 +30,6 @@ describe("Authenik8 Full Integration", () => {
     refreshToken = res.body.refreshToken;
   });
 
-  //  PROTECTED ROUTE
   test("should access protected route with valid token", async () => {
     const res = await request
       .get("/protected")
@@ -43,14 +39,12 @@ describe("Authenik8 Full Integration", () => {
     expect(res.body).toHaveProperty("data", "secure data");
   });
 
-  //  NO TOKEN
   test("should reject request without token", async () => {
     const res = await request.get("/protected");
 
     expect(res.status).toBe(401);
   });
 
-  // REFRESH TOKEN
   test("should refresh access token", async () => {
     const res = await request
       .post("/refresh")
@@ -60,41 +54,31 @@ describe("Authenik8 Full Integration", () => {
     expect(res.body).toHaveProperty("accessToken");
     expect(res.body).toHaveProperty("refreshToken");
 
-    // update tokens
     accessToken = res.body.accessToken;
     refreshToken = res.body.refreshToken;
- 
-    if (res.body.refreshToken) {
-  refreshToken = res.body.refreshToken;
-}
-
   });
 
-  //  ROTATION (IMPORTANT)
   test("should NOT allow reuse of old refresh token", async () => {
-  const originalToken = refreshToken;
+    const originalToken = refreshToken;
 
-  // first use → rotates token
-  const firstRes = await request
-    .post("/refresh")
-    .send({ refreshToken: originalToken });
+    const firstRes = await request
+      .post("/refresh")
+      .send({ refreshToken: originalToken });
 
-  expect(firstRes.status).toBe(200);
+    expect(firstRes.status).toBe(200);
 
-  const newToken = firstRes.body.refreshToken;
+    const newToken = firstRes.body.refreshToken;
 
-  // second use with OLD token → should fail
-  const res = await request
-    .post("/refresh")
-    .send({ refreshToken: originalToken });
+    const res = await request
+      .post("/refresh")
+      .send({ refreshToken: originalToken });
 
-  expect(res.status).toBe(401);
+    expect(res.status).toBe(401);
 
-  // sanity check: new token should work
-  const validRes = await request
-    .post("/refresh")
-    .send({ refreshToken: newToken });
+    const validRes = await request
+      .post("/refresh")
+      .send({ refreshToken: newToken });
 
-  expect(validRes.status).toBe(200);
-});
+    expect(validRes.status).toBe(200);
   });
+});

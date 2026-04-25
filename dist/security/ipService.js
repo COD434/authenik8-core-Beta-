@@ -43,16 +43,17 @@ const rate_limiter_flexible_1 = require("rate-limiter-flexible");
 const WHITELIST_KEY = "whitelist:ips";
 const IP_EXPIRATION_SECONDS = 7 * 24 * 60 * 60;
 const DEFAULT_JWT_EXPIRY = "1h";
+const whitelistEntryKey = (entry) => `${WHITELIST_KEY}:entry:${encodeURIComponent(entry)}`;
 const JWT_SECRET = process.env.JWT_SECRET || "Boo";
 const EXPIRY = "1h";
 class SecurityModule {
     constructor(options = {}) {
-        var _a, _b, _c;
         this.jwtSecret = options.jwtSecret || process.env.JWT_SECRET || "Boo";
         this.jwtExpiry = options.jwtExpiry || DEFAULT_JWT_EXPIRY;
-        this.whiteListEnabled = (_a = options.whiteListEnabled) !== null && _a !== void 0 ? _a : true;
-        this.helmetEnabled = (_b = options.helmetEnabled) !== null && _b !== void 0 ? _b : true;
-        this.rateLimiterEnabled = (_c = options.rateLimiterEnabled) !== null && _c !== void 0 ? _c : true;
+        this.whiteListEnabled = options.whiteListEnabled ?? true;
+        this.helmetEnabled = options.helmetEnabled ?? true;
+        this.rateLimiterEnabled = options.rateLimiterEnabled ?? true;
+        this.trustProxyHeaders = options.trustProxyHeaders ?? false;
         this.redisClient = options.redisClient || new ioredis_1.default({
             host: process.env.REDIS_HOST || "127.0.0.1",
             port: Number(process.env.REDIS_PORT || 6379),
@@ -83,7 +84,7 @@ class SecurityModule {
                 return true;
             if (ip === "::1" || ip === "127.0.0.1")
                 return true;
-            const entries = await this.redisClient.smembers(WHITELIST_KEY);
+            const entries = await this.listIPs();
             for (const entry of entries) {
                 if (entry.includes("/")) {
                     const CIDR = (await Promise.resolve().then(() => __importStar(require("ip-cidr")))).default;
@@ -100,20 +101,40 @@ class SecurityModule {
     }
     async addIP(ipOrCIDR, ttl = IP_EXPIRATION_SECONDS) {
         await this.redisClient.sadd(WHITELIST_KEY, ipOrCIDR);
-        await this.redisClient.expire(WHITELIST_KEY, ttl);
+        await this.redisClient.set(whitelistEntryKey(ipOrCIDR), "1", "EX", ttl);
     }
     async removeIP(ipOrCIDR) {
         await this.redisClient.srem(WHITELIST_KEY, ipOrCIDR);
+        await this.redisClient.del(whitelistEntryKey(ipOrCIDR));
     }
     async listIPs() {
-        return await this.redisClient.smembers(WHITELIST_KEY);
+        const entries = await this.redisClient.smembers(WHITELIST_KEY);
+        const activeEntries = [];
+        for (const entry of entries) {
+            const exists = await this.redisClient.exists(whitelistEntryKey(entry));
+            if (exists === 1) {
+                activeEntries.push(entry);
+            }
+            else {
+                await this.redisClient.srem(WHITELIST_KEY, entry);
+            }
+        }
+        return activeEntries;
+    }
+    getClientIp(req) {
+        if (this.trustProxyHeaders) {
+            const forwarded = req.headers["x-forwarded-for"]?.toString().split(",")[0]?.trim();
+            if (forwarded) {
+                return forwarded;
+            }
+        }
+        return req.ip || req.socket.remoteAddress || "unknown";
     }
     whiteListMiddleware() {
         return async (req, res, next) => {
-            var _a, _b;
             if (!this.whiteListEnabled)
                 return next();
-            const clientIP = ((_b = (_a = req.headers["x-forwarded-for"]) === null || _a === void 0 ? void 0 : _a.toString().split(",")[0]) === null || _b === void 0 ? void 0 : _b.trim()) || req.ip;
+            const clientIP = this.getClientIp(req);
             if (await this.isAllowed(clientIP))
                 return next();
             res.status(403).json({ error: "Access denied" });

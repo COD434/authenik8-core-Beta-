@@ -51,12 +51,29 @@ return {allowed:true ,remaining:Math.floor(newToken - 1)};
 }
 
 let tokenBucket: TokenBucket;
+let tokenBucketPromise: Promise<TokenBucket> | null = null;
 
 
 export const initializeRateLimiter = async () => {
 const redisClient = (await setupRedis()).redisClient;
 tokenBucket = new TokenBucket(redisClient);
+return tokenBucket;
 };
+const getTokenBucket = async () => {
+if (tokenBucket) {
+return tokenBucket;
+}
+
+if (!tokenBucketPromise) {
+tokenBucketPromise = initializeRateLimiter().catch((error) => {
+tokenBucketPromise = null;
+throw error;
+});
+}
+
+return tokenBucketPromise;
+};
+
 const createRatelimiter = (config:{
 capacity:number;
 refillRate: number;
@@ -64,7 +81,19 @@ keyGenerator: (req:Request)=> string;
 })=>{
 return async(req:Request, res:Response, next:NextFunction): Promise<void> =>{
 const key = config.keyGenerator(req);
-const {allowed, remaining, retryAfter}= await tokenBucket.consume(
+let bucket: TokenBucket;
+
+try{
+bucket = await getTokenBucket();
+}catch(error){
+console.error("Rate limiter unavailable:", error);
+res.status(503).json({
+error:"Rate limiter unavailable"
+})
+return;
+}
+
+const {allowed, remaining, retryAfter}= await bucket.consume(
 key,
 config.capacity,
 config.refillRate
@@ -105,12 +134,6 @@ const RATE_LIMIT_CONFIGS= {
 	keyGenerator:(req: Request): string => req.ip || "unknown"
 	}
 };
-
-initializeRateLimiter().catch((err) => {
-  console.error("Failed to initialize rate limiters:", err);
-  process.exit(1);
-})
-
 
 export const OTPLimiterMiddleware =createRatelimiter(RATE_LIMIT_CONFIGS.OTP);
 export const LoginLimiterMiddleware = () => createRatelimiter(RATE_LIMIT_CONFIGS.LOGIN);

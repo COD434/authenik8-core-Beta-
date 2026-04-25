@@ -16,10 +16,11 @@ export interface JWTOptions {
 export declare class JWTService {
     private jwtSecret;
     private expiry?;
-    signToken(payload: object): string;
     private redisclient?;
     private onGuestToken?;
     constructor(options: JWTOptions);
+    private persistSessionToken;
+    signToken(payload: object): string;
     guestToken(): string;
     verifyToken(token: string): JwtPayload | null;
     authenticateJWT: (req: Request, res: Response, next: NextFunction) => Promise<Response<any, Record<string, any>> | undefined>;
