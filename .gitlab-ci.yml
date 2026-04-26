@@ -172,8 +172,11 @@ publish:
   stage: publish
   image: node:22-bookworm
   interruptible: false
+
   id_tokens:
-    - sigstore
+    SIGSTORE_ID_TOKEN:
+      aud: sigstore
+
   needs:
     - job: build
       artifacts: true
