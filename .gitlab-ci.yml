@@ -191,4 +191,3 @@ publish:
     - npm publish --provenance --access public
   rules:
     - if: '$CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+$/'
-    - when: never
