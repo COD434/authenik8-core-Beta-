@@ -158,7 +158,7 @@ security:
     expire_in: 1 week
     paths:
       - reports/security/npm-audit.json
-    coverage: '/All files[^|]*\|[^|]*\s+([\d.]+)%/'
+  coverage: '/All files[^|]*\|[^|]*\s+([\d.]+)%/'
 
 build:
   stage: build
