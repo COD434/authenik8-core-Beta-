@@ -178,7 +178,7 @@ publish:
   before_script:
     - node --version
     - npm --version
-    - echo "Token length: ${NPM_TOKEN}"
+    - 'echo "Token length: ${#NPM_TOKEN}"'
   script:
     - npm config set //registry.npmjs.org/:_authToken ${NPM_TOKEN}
     - echo "=== npm config list (registry part) ==="
