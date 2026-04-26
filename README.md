@@ -1,5 +1,11 @@
 # Authenik8-core
 
+
+
+[![Pipeline status](https://gitlab.com/COD434/authenik8-core/badges/main/pipeline.svg)](https://gitlab.com/COD434/authenik8-core/-/pipelines)
+[![Coverage](https://gitlab.com/COD434/authenik8-core/badges/main/coverage.svg)](https://gitlab.com/COD434/authenik8-core/-/pipelines)
+[![NPM Version](https://img.shields.io/npm/v/authenik8-core.svg)](https://www.npmjs.com/package/authenik8-core)
+
 Most JWT authentication systems break under real-world attacks.
 Authenik8-core is built to handle them.
 
