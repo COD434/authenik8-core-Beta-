@@ -12,6 +12,7 @@ Authenik8-core is built to handle them.
 ***
 ## What Authenik8-core Does
 Authenik8-core adds a security layer on top of JWT:
+
  •Refresh token rotation with replay protection (jti-based)
 
  •Stateful session control using Redis
