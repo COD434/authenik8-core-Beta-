@@ -169,9 +169,6 @@ build:
       - dist/
 
 publish:
-  # npm trusted publishing with Sigstore provenance requires GitLab OIDC and
-  # a modern npm CLI. Use Node 22 here even though the rest of the pipeline
-  # defaults to Node 20.
   stage: publish
   image: node:22-bookworm
   interruptible: false
@@ -183,7 +180,6 @@ publish:
     - node --version
     - npm --version
     - echo "NPM_TOKEN length: ${#NPM_TOKEN}"
-
   script:
     - npm config set //registry.npmjs.org/:_authToken ${NPM_TOKEN}
     - echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > .npmrc
