@@ -57,7 +57,7 @@ lint:
 test:unit:
   
   stage: test
-  coverage: '/All files[^|]*\|[^|]*\s+([\d.]+)%/'
+  coverage: '/All files\s*\|\s*([\d.]+)/'
   script:
     - mkdir -p reports/unit coverage/unit
     - npm run test:unit:ci
