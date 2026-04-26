@@ -185,8 +185,6 @@ publish:
   before_script:
     - node --version
     - npm --version
-    - npm install --global npm@^11.5.1
-    - npm --version
   script:
     - npm publish --provenance --access public
   rules:
