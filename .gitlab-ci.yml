@@ -177,6 +177,9 @@ publish:
   interruptible: false
   resource_group: npm-publish
   id_tokens:
+    NPM_ID_TOKEN:         
+      aud: "npm:registry.npmjs.org"
+  id_tokens:
     SIGSTORE_ID_TOKEN:
       aud: sigstore
   needs:
