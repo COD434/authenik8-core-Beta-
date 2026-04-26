@@ -183,7 +183,9 @@ publish:
     - node --version
     - npm --version
     - echo "NPM_TOKEN length: ${#NPM_TOKEN}"
+
   script:
+    - npm config set //registry.npmjs.org/:_authToken ${NPM_TOKEN}
     - echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > .npmrc
     - echo "=== npm config list (registry part) ==="
     - npm config list | grep -E 'registry|auth'
