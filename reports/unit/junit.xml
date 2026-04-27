@@ -1,244 +1,173 @@
 <?xml version="1.0" encoding="UTF-8" ?>
-<testsuites name="vitest tests" tests="251" failures="3" errors="0" time="2.386564">
-    <testsuite name="src/tests/integration/full.intergration.test.ts" timestamp="2026-04-27T13:40:21.255Z" hostname="localhost" tests="6" failures="1" errors="0" skipped="5" time="0.061944385">
-        <testcase classname="src/tests/integration/full.intergration.test.ts" name="Authenik8 Full Integration &gt; should login and receive tokens" time="0">
-            <skipped/>
+<testsuites name="vitest tests" tests="240" failures="0" errors="0" time="2.377649386">
+    <testsuite name="src/tests/unit/RedisStore.unit.test.ts" timestamp="2026-04-27T14:02:33.059Z" hostname="localhost" tests="24" failures="0" errors="0" skipped="0" time="0.073235769">
+        <testcase classname="src/tests/unit/RedisStore.unit.test.ts" name="storeRefreshToken &gt; stores token under auth:v1:refresh:&lt;userId&gt;" time="0.017185">
         </testcase>
-        <testcase classname="src/tests/integration/full.intergration.test.ts" name="Authenik8 Full Integration &gt; should access protected route with valid token" time="0">
-            <skipped/>
+        <testcase classname="src/tests/unit/RedisStore.unit.test.ts" name="getRefreshToken &gt; returns the stored value" time="0.005678769">
         </testcase>
-        <testcase classname="src/tests/integration/full.intergration.test.ts" name="Authenik8 Full Integration &gt; should reject request without token" time="0">
-            <skipped/>
+        <testcase classname="src/tests/unit/RedisStore.unit.test.ts" name="getRefreshToken &gt; returns null when not found" time="0.002264923">
         </testcase>
-        <testcase classname="src/tests/integration/full.intergration.test.ts" name="Authenik8 Full Integration &gt; should refresh access token" time="0">
-            <skipped/>
+        <testcase classname="src/tests/unit/RedisStore.unit.test.ts" name="deleteRefreshToken &gt; deletes the correct key" time="0.001236308">
         </testcase>
-        <testcase classname="src/tests/integration/full.intergration.test.ts" name="Authenik8 Full Integration &gt; should NOT allow reuse of old refresh token" time="0">
-            <skipped/>
+        <testcase classname="src/tests/unit/RedisStore.unit.test.ts" name="getset &gt; calls redis.getset and returns the previous value" time="0.001448615">
         </testcase>
-        <testcase classname="src/tests/integration/full.intergration.test.ts" name="Authenik8 Full Integration" time="0.056696923">
-            <system-err>
-[ioredis] Unhandled error event: Error: connect ECONNREFUSED 127.0.0.1:6379
-    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1611:16)
-
-            </system-err>
-            <failure message="Connection is closed." type="Error">
-Error: Connection is closed.
- ❯ EventEmitter.connectionCloseHandler node_modules/ioredis/built/Redis.js:208:28
-            </failure>
+        <testcase classname="src/tests/unit/RedisStore.unit.test.ts" name="getset &gt; sets expiry when provided" time="0.001451385">
         </testcase>
-    </testsuite>
-    <testsuite name="src/tests/integration/oauthIdentity.integration.test.ts" timestamp="2026-04-27T13:40:21.281Z" hostname="localhost" tests="3" failures="1" errors="0" skipped="2" time="0.079741462">
-        <testcase classname="src/tests/integration/oauthIdentity.integration.test.ts" name="OAuth identity issuance &gt; issues tokens against a stable internal user id across auth instances" time="0">
-            <skipped/>
+        <testcase classname="src/tests/unit/RedisStore.unit.test.ts" name="getset &gt; does not call expire when no expiry is given" time="0.001564307">
         </testcase>
-        <testcase classname="src/tests/integration/oauthIdentity.integration.test.ts" name="OAuth identity issuance &gt; rejects unverified OAuth profiles" time="0">
-            <skipped/>
+        <testcase classname="src/tests/unit/RedisStore.unit.test.ts" name="blacklistToken &gt; sets blacklist key with correct TTL" time="0.001232615">
         </testcase>
-        <testcase classname="src/tests/integration/oauthIdentity.integration.test.ts" name="OAuth identity issuance" time="0.074494846">
-            <system-err>
-[ioredis] Unhandled error event: Error: connect ECONNREFUSED 127.0.0.1:6379
-    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1611:16)
-
-            </system-err>
-            <failure message="Connection is closed." type="Error">
-Error: Connection is closed.
- ❯ EventEmitter.connectionCloseHandler node_modules/ioredis/built/Redis.js:208:28
-            </failure>
-            <failure message="Cannot read properties of undefined (reading &apos;quit&apos;)" type="TypeError">
-TypeError: Cannot read properties of undefined (reading &apos;quit&apos;)
- ❯ src/tests/integration/oauthIdentity.integration.test.ts:16:26
-            </failure>
+        <testcase classname="src/tests/unit/RedisStore.unit.test.ts" name="isBlacklisted &gt; returns true when key exists" time="0.001012077">
         </testcase>
-    </testsuite>
-    <testsuite name="src/tests/integration/sessionPersistence.integration.test.ts" timestamp="2026-04-27T13:40:21.295Z" hostname="localhost" tests="2" failures="1" errors="0" skipped="1" time="0.080239077">
-        <testcase classname="src/tests/integration/sessionPersistence.integration.test.ts" name="session persistence &gt; signToken persists the active access token session" time="0">
-            <skipped/>
+        <testcase classname="src/tests/unit/RedisStore.unit.test.ts" name="isBlacklisted &gt; returns false when key does not exist" time="0.000867769">
         </testcase>
-        <testcase classname="src/tests/integration/sessionPersistence.integration.test.ts" name="session persistence" time="0.077188615">
-            <system-err>
-[ioredis] Unhandled error event: Error: connect ECONNREFUSED 127.0.0.1:6379
-    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1611:16)
-
-            </system-err>
-            <failure message="Connection is closed." type="Error">
-Error: Connection is closed.
- ❯ EventEmitter.connectionCloseHandler node_modules/ioredis/built/Redis.js:208:28
-            </failure>
-            <failure message="Cannot read properties of undefined (reading &apos;close&apos;)" type="TypeError">
-TypeError: Cannot read properties of undefined (reading &apos;close&apos;)
- ❯ src/tests/integration/sessionPersistence.integration.test.ts:30:23
-            </failure>
+        <testcase classname="src/tests/unit/RedisStore.unit.test.ts" name="incrementRateLimit &gt; increments the rate limit key" time="0.001630846">
+        </testcase>
+        <testcase classname="src/tests/unit/RedisStore.unit.test.ts" name="incrementRateLimit &gt; sets expiry only on the first increment" time="0.002715615">
+        </testcase>
+        <testcase classname="src/tests/unit/RedisStore.unit.test.ts" name="incrementRateLimit &gt; does not set expiry on subsequent increments" time="0.001966538">
+        </testcase>
+        <testcase classname="src/tests/unit/RedisStore.unit.test.ts" name="whitelist &gt; addToWhitelist sets the correct key" time="0.002149538">
+        </testcase>
+        <testcase classname="src/tests/unit/RedisStore.unit.test.ts" name="whitelist &gt; removeFromWhitelist deletes the correct key" time="0.001688">
+        </testcase>
+        <testcase classname="src/tests/unit/RedisStore.unit.test.ts" name="whitelist &gt; isWhitelisted returns true when key exists" time="0.000930692">
+        </testcase>
+        <testcase classname="src/tests/unit/RedisStore.unit.test.ts" name="whitelist &gt; isWhitelisted returns false when key does not exist" time="0.000756538">
+        </testcase>
+        <testcase classname="src/tests/unit/RedisStore.unit.test.ts" name="set &gt; calls redis.set with EX when expiry is provided" time="0.007700231">
+        </testcase>
+        <testcase classname="src/tests/unit/RedisStore.unit.test.ts" name="set &gt; calls redis.set without EX when no expiry" time="0.000923">
+        </testcase>
+        <testcase classname="src/tests/unit/RedisStore.unit.test.ts" name="get &gt; returns value from redis" time="0.000961">
+        </testcase>
+        <testcase classname="src/tests/unit/RedisStore.unit.test.ts" name="get &gt; returns null when key is missing" time="0.001151924">
+        </testcase>
+        <testcase classname="src/tests/unit/RedisStore.unit.test.ts" name="debug logging &gt; logs to console when debug=true" time="0.002056">
+        </testcase>
+        <testcase classname="src/tests/unit/RedisStore.unit.test.ts" name="debug logging &gt; redacts value for refresh keys in debug output" time="0.001089847">
+        </testcase>
+        <testcase classname="src/tests/unit/RedisStore.unit.test.ts" name="debug logging &gt; does not log when debug=false" time="0.000997846">
         </testcase>
     </testsuite>
-    <testsuite name="src/tests/unit/RedisStore.unit.test.ts" timestamp="2026-04-27T13:40:21.307Z" hostname="localhost" tests="24" failures="0" errors="0" skipped="0" time="0.083220308">
-        <testcase classname="src/tests/unit/RedisStore.unit.test.ts" name="storeRefreshToken &gt; stores token under auth:v1:refresh:&lt;userId&gt;" time="0.023438847">
+    <testsuite name="src/tests/unit/Resolver.unit.test.ts" timestamp="2026-04-27T14:02:33.093Z" hostname="localhost" tests="6" failures="0" errors="0" skipped="0" time="0.027481538">
+        <testcase classname="src/tests/unit/Resolver.unit.test.ts" name="resolveIdentity &gt; when provider is already registered &gt; returns the existing user without touching email lookup" time="0.010505615">
         </testcase>
-        <testcase classname="src/tests/unit/RedisStore.unit.test.ts" name="getRefreshToken &gt; returns the stored value" time="0.002427615">
+        <testcase classname="src/tests/unit/Resolver.unit.test.ts" name="resolveIdentity &gt; when no existing user is found &gt; creates and returns a new user" time="0.005195769">
         </testcase>
-        <testcase classname="src/tests/unit/RedisStore.unit.test.ts" name="getRefreshToken &gt; returns null when not found" time="0.001104539">
+        <testcase classname="src/tests/unit/Resolver.unit.test.ts" name="resolveIdentity &gt; when no existing user is found &gt; does not call linkProvider when creating a new user" time="0.000931461">
         </testcase>
-        <testcase classname="src/tests/unit/RedisStore.unit.test.ts" name="deleteRefreshToken &gt; deletes the correct key" time="0.001237539">
+        <testcase classname="src/tests/unit/Resolver.unit.test.ts" name="resolveIdentity &gt; when user exists by email and auto-link is enabled &gt; links the provider and returns the existing user" time="0.001615692">
         </testcase>
-        <testcase classname="src/tests/unit/RedisStore.unit.test.ts" name="getset &gt; calls redis.getset and returns the previous value" time="0.002574461">
+        <testcase classname="src/tests/unit/Resolver.unit.test.ts" name="resolveIdentity &gt; when user exists by email but auto-link is disabled &gt; returns an IDENTITY_CONFLICT result" time="0.001134846">
         </testcase>
-        <testcase classname="src/tests/unit/RedisStore.unit.test.ts" name="getset &gt; sets expiry when provided" time="0.002595308">
-        </testcase>
-        <testcase classname="src/tests/unit/RedisStore.unit.test.ts" name="getset &gt; does not call expire when no expiry is given" time="0.002013231">
-        </testcase>
-        <testcase classname="src/tests/unit/RedisStore.unit.test.ts" name="blacklistToken &gt; sets blacklist key with correct TTL" time="0.001608308">
-        </testcase>
-        <testcase classname="src/tests/unit/RedisStore.unit.test.ts" name="isBlacklisted &gt; returns true when key exists" time="0.001367924">
-        </testcase>
-        <testcase classname="src/tests/unit/RedisStore.unit.test.ts" name="isBlacklisted &gt; returns false when key does not exist" time="0.001010077">
-        </testcase>
-        <testcase classname="src/tests/unit/RedisStore.unit.test.ts" name="incrementRateLimit &gt; increments the rate limit key" time="0.001846462">
-        </testcase>
-        <testcase classname="src/tests/unit/RedisStore.unit.test.ts" name="incrementRateLimit &gt; sets expiry only on the first increment" time="0.001112923">
-        </testcase>
-        <testcase classname="src/tests/unit/RedisStore.unit.test.ts" name="incrementRateLimit &gt; does not set expiry on subsequent increments" time="0.000963615">
-        </testcase>
-        <testcase classname="src/tests/unit/RedisStore.unit.test.ts" name="whitelist &gt; addToWhitelist sets the correct key" time="0.001250846">
-        </testcase>
-        <testcase classname="src/tests/unit/RedisStore.unit.test.ts" name="whitelist &gt; removeFromWhitelist deletes the correct key" time="0.001302461">
-        </testcase>
-        <testcase classname="src/tests/unit/RedisStore.unit.test.ts" name="whitelist &gt; isWhitelisted returns true when key exists" time="0.001047769">
-        </testcase>
-        <testcase classname="src/tests/unit/RedisStore.unit.test.ts" name="whitelist &gt; isWhitelisted returns false when key does not exist" time="0.001105923">
-        </testcase>
-        <testcase classname="src/tests/unit/RedisStore.unit.test.ts" name="set &gt; calls redis.set with EX when expiry is provided" time="0.001168615">
-        </testcase>
-        <testcase classname="src/tests/unit/RedisStore.unit.test.ts" name="set &gt; calls redis.set without EX when no expiry" time="0.001120308">
-        </testcase>
-        <testcase classname="src/tests/unit/RedisStore.unit.test.ts" name="get &gt; returns value from redis" time="0.002496846">
-        </testcase>
-        <testcase classname="src/tests/unit/RedisStore.unit.test.ts" name="get &gt; returns null when key is missing" time="0.002303">
-        </testcase>
-        <testcase classname="src/tests/unit/RedisStore.unit.test.ts" name="debug logging &gt; logs to console when debug=true" time="0.002558231">
-        </testcase>
-        <testcase classname="src/tests/unit/RedisStore.unit.test.ts" name="debug logging &gt; redacts value for refresh keys in debug output" time="0.001654461">
-        </testcase>
-        <testcase classname="src/tests/unit/RedisStore.unit.test.ts" name="debug logging &gt; does not log when debug=false" time="0.001439692">
+        <testcase classname="src/tests/unit/Resolver.unit.test.ts" name="resolveIdentity &gt; when user exists by email but auto-link is disabled &gt; does not call linkProvider or createUser" time="0.001916615">
         </testcase>
     </testsuite>
-    <testsuite name="src/tests/unit/Resolver.unit.test.ts" timestamp="2026-04-27T13:40:21.346Z" hostname="localhost" tests="6" failures="0" errors="0" skipped="0" time="0.033713923">
-        <testcase classname="src/tests/unit/Resolver.unit.test.ts" name="resolveIdentity &gt; when provider is already registered &gt; returns the existing user without touching email lookup" time="0.010835077">
+    <testsuite name="src/tests/unit/core.unit.test.ts" timestamp="2026-04-27T14:02:33.104Z" hostname="localhost" tests="4" failures="0" errors="0" skipped="0" time="0.043169462">
+        <testcase classname="src/tests/unit/core.unit.test.ts" name="createOAuth &gt; creates both providers when both are configured" time="0.02619877">
         </testcase>
-        <testcase classname="src/tests/unit/Resolver.unit.test.ts" name="resolveIdentity &gt; when no existing user is found &gt; creates and returns a new user" time="0.007342539">
+        <testcase classname="src/tests/unit/core.unit.test.ts" name="createOAuth &gt; creates only Google provider when only Google config is provided" time="0.003551385">
         </testcase>
-        <testcase classname="src/tests/unit/Resolver.unit.test.ts" name="resolveIdentity &gt; when no existing user is found &gt; does not call linkProvider when creating a new user" time="0.001380231">
+        <testcase classname="src/tests/unit/core.unit.test.ts" name="createOAuth &gt; creates only GitHub provider when only GitHub config is provided" time="0.001504308">
         </testcase>
-        <testcase classname="src/tests/unit/Resolver.unit.test.ts" name="resolveIdentity &gt; when user exists by email and auto-link is enabled &gt; links the provider and returns the existing user" time="0.001785539">
-        </testcase>
-        <testcase classname="src/tests/unit/Resolver.unit.test.ts" name="resolveIdentity &gt; when user exists by email but auto-link is disabled &gt; returns an IDENTITY_CONFLICT result" time="0.001320616">
-        </testcase>
-        <testcase classname="src/tests/unit/Resolver.unit.test.ts" name="resolveIdentity &gt; when user exists by email but auto-link is disabled &gt; does not call linkProvider or createUser" time="0.001052385">
+        <testcase classname="src/tests/unit/core.unit.test.ts" name="createOAuth &gt; returns undefined for both when neither provider is configured" time="0.002446692">
         </testcase>
     </testsuite>
-    <testsuite name="src/tests/unit/core.unit.test.ts" timestamp="2026-04-27T13:40:21.356Z" hostname="localhost" tests="4" failures="0" errors="0" skipped="0" time="0.040486231">
-        <testcase classname="src/tests/unit/core.unit.test.ts" name="createOAuth &gt; creates both providers when both are configured" time="0.024957308">
+    <testsuite name="src/tests/unit/createAuthenik8.unit.test.ts" timestamp="2026-04-27T14:02:33.114Z" hostname="localhost" tests="17" failures="0" errors="0" skipped="0" time="0.092040538">
+        <testcase classname="src/tests/unit/createAuthenik8.unit.test.ts" name="createAuthenik8 &gt; returns all expected properties" time="0.012500308">
         </testcase>
-        <testcase classname="src/tests/unit/core.unit.test.ts" name="createOAuth &gt; creates only Google provider when only Google config is provided" time="0.003727307">
+        <testcase classname="src/tests/unit/createAuthenik8.unit.test.ts" name="createAuthenik8 &gt; uses provided redis client instead of initializing one" time="0.006098692">
         </testcase>
-        <testcase classname="src/tests/unit/core.unit.test.ts" name="createOAuth &gt; creates only GitHub provider when only GitHub config is provided" time="0.001410231">
+        <testcase classname="src/tests/unit/createAuthenik8.unit.test.ts" name="createAuthenik8 &gt; initializes redis when none is provided" time="0.003375308">
         </testcase>
-        <testcase classname="src/tests/unit/core.unit.test.ts" name="createOAuth &gt; returns undefined for both when neither provider is configured" time="0.001783615">
+        <testcase classname="src/tests/unit/createAuthenik8.unit.test.ts" name="createAuthenik8 &gt; creates oauth when config.oauth is provided" time="0.013731307">
         </testcase>
-    </testsuite>
-    <testsuite name="src/tests/unit/createAuthenik8.unit.test.ts" timestamp="2026-04-27T13:40:21.368Z" hostname="localhost" tests="17" failures="0" errors="0" skipped="0" time="0.091035384">
-        <testcase classname="src/tests/unit/createAuthenik8.unit.test.ts" name="createAuthenik8 &gt; returns all expected properties" time="0.012210077">
+        <testcase classname="src/tests/unit/createAuthenik8.unit.test.ts" name="createAuthenik8 &gt; leaves oauth undefined when config.oauth is not provided" time="0.002645846">
         </testcase>
-        <testcase classname="src/tests/unit/createAuthenik8.unit.test.ts" name="createAuthenik8 &gt; uses provided redis client instead of initializing one" time="0.005482154">
+        <testcase classname="src/tests/unit/createAuthenik8.unit.test.ts" name="createAuthenik8 &gt; uses provided identityAdapter over the default redis adapter" time="0.002855">
         </testcase>
-        <testcase classname="src/tests/unit/createAuthenik8.unit.test.ts" name="createAuthenik8 &gt; initializes redis when none is provided" time="0.002916615">
+        <testcase classname="src/tests/unit/createAuthenik8.unit.test.ts" name="createAuthenik8 &gt; defaults jwtExpiry to 15m when not provided" time="0.009773538">
         </testcase>
-        <testcase classname="src/tests/unit/createAuthenik8.unit.test.ts" name="createAuthenik8 &gt; creates oauth when config.oauth is provided" time="0.003857846">
+        <testcase classname="src/tests/unit/createAuthenik8.unit.test.ts" name="issueTokens &gt; returns accessToken and refreshToken" time="0.001996846">
         </testcase>
-        <testcase classname="src/tests/unit/createAuthenik8.unit.test.ts" name="createAuthenik8 &gt; leaves oauth undefined when config.oauth is not provided" time="0.003489769">
+        <testcase classname="src/tests/unit/createAuthenik8.unit.test.ts" name="issueTokens &gt; calls signToken and generateRefreshToken with correct payload" time="0.004159692">
         </testcase>
-        <testcase classname="src/tests/unit/createAuthenik8.unit.test.ts" name="createAuthenik8 &gt; uses provided identityAdapter over the default redis adapter" time="0.005471">
+        <testcase classname="src/tests/unit/createAuthenik8.unit.test.ts" name="issueTokensFromProfile &gt; throws when email is not verified" time="0.007811077">
         </testcase>
-        <testcase classname="src/tests/unit/createAuthenik8.unit.test.ts" name="createAuthenik8 &gt; defaults jwtExpiry to 15m when not provided" time="0.011485462">
+        <testcase classname="src/tests/unit/createAuthenik8.unit.test.ts" name="issueTokensFromProfile &gt; throws when email_verified is an unrecognised value" time="0.001792923">
         </testcase>
-        <testcase classname="src/tests/unit/createAuthenik8.unit.test.ts" name="issueTokens &gt; returns accessToken and refreshToken" time="0.003795076">
+        <testcase classname="src/tests/unit/createAuthenik8.unit.test.ts" name="issueTokensFromProfile &gt; accepts email_verified as the string &quot;true&quot;" time="0.001789539">
         </testcase>
-        <testcase classname="src/tests/unit/createAuthenik8.unit.test.ts" name="issueTokens &gt; calls signToken and generateRefreshToken with correct payload" time="0.007202769">
+        <testcase classname="src/tests/unit/createAuthenik8.unit.test.ts" name="issueTokensFromProfile &gt; returns tokens for EXISTING_PROVIDER_LOGIN" time="0.001289615">
         </testcase>
-        <testcase classname="src/tests/unit/createAuthenik8.unit.test.ts" name="issueTokensFromProfile &gt; throws when email is not verified" time="0.007613615">
+        <testcase classname="src/tests/unit/createAuthenik8.unit.test.ts" name="issueTokensFromProfile &gt; returns tokens for NEW_USER_CREATION" time="0.001175154">
         </testcase>
-        <testcase classname="src/tests/unit/createAuthenik8.unit.test.ts" name="issueTokensFromProfile &gt; throws when email_verified is an unrecognised value" time="0.00384">
+        <testcase classname="src/tests/unit/createAuthenik8.unit.test.ts" name="issueTokensFromProfile &gt; throws the message from LINK_REQUIRED result" time="0.004066769">
         </testcase>
-        <testcase classname="src/tests/unit/createAuthenik8.unit.test.ts" name="issueTokensFromProfile &gt; accepts email_verified as the string &quot;true&quot;" time="0.003813154">
+        <testcase classname="src/tests/unit/createAuthenik8.unit.test.ts" name="issueTokensFromProfile &gt; throws generic error for unexpected result types" time="0.003607077">
         </testcase>
-        <testcase classname="src/tests/unit/createAuthenik8.unit.test.ts" name="issueTokensFromProfile &gt; returns tokens for EXISTING_PROVIDER_LOGIN" time="0.001588923">
-        </testcase>
-        <testcase classname="src/tests/unit/createAuthenik8.unit.test.ts" name="issueTokensFromProfile &gt; returns tokens for NEW_USER_CREATION" time="0.001568308">
-        </testcase>
-        <testcase classname="src/tests/unit/createAuthenik8.unit.test.ts" name="issueTokensFromProfile &gt; throws the message from LINK_REQUIRED result" time="0.001955077">
-        </testcase>
-        <testcase classname="src/tests/unit/createAuthenik8.unit.test.ts" name="issueTokensFromProfile &gt; throws generic error for unexpected result types" time="0.002907">
-        </testcase>
-        <testcase classname="src/tests/unit/createAuthenik8.unit.test.ts" name="issueTokensFromProfile &gt; calls resolveOAuth in login mode with null userId" time="0.003411153">
+        <testcase classname="src/tests/unit/createAuthenik8.unit.test.ts" name="issueTokensFromProfile &gt; calls resolveOAuth in login mode with null userId" time="0.003329461">
         </testcase>
     </testsuite>
-    <testsuite name="src/tests/unit/github.unit.test.ts" timestamp="2026-04-27T13:40:21.397Z" hostname="localhost" tests="13" failures="0" errors="0" skipped="0" time="0.114789">
-        <testcase classname="src/tests/unit/github.unit.test.ts" name="createGitHubProvider &gt; redirect &gt; stores state in Redis and redirects to GitHub" time="0.03862523">
+    <testsuite name="src/tests/unit/github.unit.test.ts" timestamp="2026-04-27T14:02:33.138Z" hostname="localhost" tests="13" failures="0" errors="0" skipped="0" time="0.10617977">
+        <testcase classname="src/tests/unit/github.unit.test.ts" name="createGitHubProvider &gt; redirect &gt; stores state in Redis and redirects to GitHub" time="0.05181077">
             <system-out>
 REDIRECT STATE: { userId: [90mundefined[39m, mode: [32m&apos;login&apos;[39m }
 
             </system-out>
         </testcase>
-        <testcase classname="src/tests/unit/github.unit.test.ts" name="createGitHubProvider &gt; redirect &gt; includes clientId, redirectUri, scope and state in the redirect URL" time="0.007322231">
+        <testcase classname="src/tests/unit/github.unit.test.ts" name="createGitHubProvider &gt; redirect &gt; includes clientId, redirectUri, scope and state in the redirect URL" time="0.004847154">
             <system-out>
 REDIRECT STATE: { userId: [90mundefined[39m, mode: [32m&apos;login&apos;[39m }
 
             </system-out>
         </testcase>
-        <testcase classname="src/tests/unit/github.unit.test.ts" name="createGitHubProvider &gt; redirect &gt; stores userId from req.user in Redis state" time="0.005388384">
+        <testcase classname="src/tests/unit/github.unit.test.ts" name="createGitHubProvider &gt; redirect &gt; stores userId from req.user in Redis state" time="0.003623693">
             <system-out>
 REDIRECT STATE: { userId: [32m&apos;user-123&apos;[39m, mode: [32m&apos;link&apos;[39m }
 
             </system-out>
         </testcase>
-        <testcase classname="src/tests/unit/github.unit.test.ts" name="createGitHubProvider &gt; redirect &gt; stores mode=link when link mode is passed" time="0.003553231">
+        <testcase classname="src/tests/unit/github.unit.test.ts" name="createGitHubProvider &gt; redirect &gt; stores mode=link when link mode is passed" time="0.002368615">
             <system-out>
 REDIRECT STATE: { userId: [90mundefined[39m, mode: [32m&apos;link&apos;[39m }
 
             </system-out>
         </testcase>
-        <testcase classname="src/tests/unit/github.unit.test.ts" name="createGitHubProvider &gt; redirect &gt; skips redirect when headers are already sent" time="0.007760231">
+        <testcase classname="src/tests/unit/github.unit.test.ts" name="createGitHubProvider &gt; redirect &gt; skips redirect when headers are already sent" time="0.002242769">
             <system-out>
 🚨 HEADERS ALREADY SENT — SKIPPING
 
             </system-out>
         </testcase>
-        <testcase classname="src/tests/unit/github.unit.test.ts" name="createGitHubProvider &gt; handleCallback &gt; throws when state is missing from query" time="0.008956">
+        <testcase classname="src/tests/unit/github.unit.test.ts" name="createGitHubProvider &gt; handleCallback &gt; throws when state is missing from query" time="0.00634">
         </testcase>
-        <testcase classname="src/tests/unit/github.unit.test.ts" name="createGitHubProvider &gt; handleCallback &gt; throws when state is not found in Redis" time="0.001694154">
+        <testcase classname="src/tests/unit/github.unit.test.ts" name="createGitHubProvider &gt; handleCallback &gt; throws when state is not found in Redis" time="0.001637231">
         </testcase>
-        <testcase classname="src/tests/unit/github.unit.test.ts" name="createGitHubProvider &gt; handleCallback &gt; throws when code is missing from query" time="0.001609769">
+        <testcase classname="src/tests/unit/github.unit.test.ts" name="createGitHubProvider &gt; handleCallback &gt; throws when code is missing from query" time="0.001629923">
         </testcase>
-        <testcase classname="src/tests/unit/github.unit.test.ts" name="createGitHubProvider &gt; handleCallback &gt; throws when GitHub returns no access token" time="0.005695461">
+        <testcase classname="src/tests/unit/github.unit.test.ts" name="createGitHubProvider &gt; handleCallback &gt; throws when GitHub returns no access token" time="0.004473846">
         </testcase>
-        <testcase classname="src/tests/unit/github.unit.test.ts" name="createGitHubProvider &gt; handleCallback &gt; throws when GitHub user fetch fails" time="0.013266385">
+        <testcase classname="src/tests/unit/github.unit.test.ts" name="createGitHubProvider &gt; handleCallback &gt; throws when GitHub user fetch fails" time="0.008848615">
         </testcase>
-        <testcase classname="src/tests/unit/github.unit.test.ts" name="createGitHubProvider &gt; handleCallback &gt; throws when no verified primary email is found" time="0.002995385">
+        <testcase classname="src/tests/unit/github.unit.test.ts" name="createGitHubProvider &gt; handleCallback &gt; throws when no verified primary email is found" time="0.001875154">
         </testcase>
-        <testcase classname="src/tests/unit/github.unit.test.ts" name="createGitHubProvider &gt; handleCallback &gt; returns profile, mode and userId on success" time="0.003572539">
+        <testcase classname="src/tests/unit/github.unit.test.ts" name="createGitHubProvider &gt; handleCallback &gt; returns profile, mode and userId on success" time="0.002917923">
         </testcase>
-        <testcase classname="src/tests/unit/github.unit.test.ts" name="createGitHubProvider &gt; handleCallback &gt; deletes the state key from Redis after success" time="0.002260307">
+        <testcase classname="src/tests/unit/github.unit.test.ts" name="createGitHubProvider &gt; handleCallback &gt; deletes the state key from Redis after success" time="0.002129846">
         </testcase>
     </testsuite>
-    <testsuite name="src/tests/unit/google.unit.test.ts" timestamp="2026-04-27T13:40:21.427Z" hostname="localhost" tests="18" failures="0" errors="0" skipped="0" time="0.172341308">
-        <testcase classname="src/tests/unit/google.unit.test.ts" name="createGoogleProvider &gt; redirect &gt; stores state in Redis and redirects to Google" time="0.035424308">
+    <testsuite name="src/tests/unit/google.unit.test.ts" timestamp="2026-04-27T14:02:33.168Z" hostname="localhost" tests="18" failures="0" errors="0" skipped="0" time="0.226993846">
+        <testcase classname="src/tests/unit/google.unit.test.ts" name="createGoogleProvider &gt; redirect &gt; stores state in Redis and redirects to Google" time="0.036459462">
         </testcase>
-        <testcase classname="src/tests/unit/google.unit.test.ts" name="createGoogleProvider &gt; redirect &gt; includes required OAuth params in the redirect URL" time="0.006949923">
+        <testcase classname="src/tests/unit/google.unit.test.ts" name="createGoogleProvider &gt; redirect &gt; includes required OAuth params in the redirect URL" time="0.004876308">
         </testcase>
-        <testcase classname="src/tests/unit/google.unit.test.ts" name="createGoogleProvider &gt; redirect &gt; sets mode=link when path contains &quot;link&quot;" time="0.003242154">
+        <testcase classname="src/tests/unit/google.unit.test.ts" name="createGoogleProvider &gt; redirect &gt; sets mode=link when path contains &quot;link&quot;" time="0.005122462">
         </testcase>
-        <testcase classname="src/tests/unit/google.unit.test.ts" name="createGoogleProvider &gt; redirect &gt; stores userId from req.user in Redis state" time="0.004733231">
+        <testcase classname="src/tests/unit/google.unit.test.ts" name="createGoogleProvider &gt; redirect &gt; stores userId from req.user in Redis state" time="0.006091077">
         </testcase>
-        <testcase classname="src/tests/unit/google.unit.test.ts" name="createGoogleProvider &gt; redirect &gt; returns 500 when Redis throws" time="0.059112385">
+        <testcase classname="src/tests/unit/google.unit.test.ts" name="createGoogleProvider &gt; redirect &gt; returns 500 when Redis throws" time="0.106803692">
             <system-err>
 Google redirect error: Error: Redis down
     at [90m/root/authenik8-core/[39msrc/tests/unit/google.unit.test.ts:165:45
@@ -254,89 +183,89 @@ Google redirect error: Error: Redis down
 
             </system-err>
         </testcase>
-        <testcase classname="src/tests/unit/google.unit.test.ts" name="createGoogleProvider &gt; handleCallback &gt; throws when state is missing" time="0.011157539">
+        <testcase classname="src/tests/unit/google.unit.test.ts" name="createGoogleProvider &gt; handleCallback &gt; throws when state is missing" time="0.011489538">
         </testcase>
-        <testcase classname="src/tests/unit/google.unit.test.ts" name="createGoogleProvider &gt; handleCallback &gt; throws when state is not found in Redis" time="0.00167077">
+        <testcase classname="src/tests/unit/google.unit.test.ts" name="createGoogleProvider &gt; handleCallback &gt; throws when state is not found in Redis" time="0.001522538">
         </testcase>
-        <testcase classname="src/tests/unit/google.unit.test.ts" name="createGoogleProvider &gt; handleCallback &gt; throws when code is missing" time="0.001754846">
+        <testcase classname="src/tests/unit/google.unit.test.ts" name="createGoogleProvider &gt; handleCallback &gt; throws when code is missing" time="0.001736923">
         </testcase>
-        <testcase classname="src/tests/unit/google.unit.test.ts" name="createGoogleProvider &gt; handleCallback &gt; throws when token exchange response is not ok" time="0.003553615">
+        <testcase classname="src/tests/unit/google.unit.test.ts" name="createGoogleProvider &gt; handleCallback &gt; throws when token exchange response is not ok" time="0.005878692">
         </testcase>
-        <testcase classname="src/tests/unit/google.unit.test.ts" name="createGoogleProvider &gt; handleCallback &gt; throws when no access_token is returned" time="0.004309769">
+        <testcase classname="src/tests/unit/google.unit.test.ts" name="createGoogleProvider &gt; handleCallback &gt; throws when no access_token is returned" time="0.005485539">
         </testcase>
-        <testcase classname="src/tests/unit/google.unit.test.ts" name="createGoogleProvider &gt; handleCallback &gt; throws when no id_token is returned" time="0.007077847">
+        <testcase classname="src/tests/unit/google.unit.test.ts" name="createGoogleProvider &gt; handleCallback &gt; throws when no id_token is returned" time="0.010446154">
             <system-out>
 TOKEN DATA: { access_token: [32m&apos;goog-token&apos;[39m }
 
             </system-out>
         </testcase>
-        <testcase classname="src/tests/unit/google.unit.test.ts" name="createGoogleProvider &gt; handleCallback &gt; throws when ID token payload is null" time="0.002213769">
+        <testcase classname="src/tests/unit/google.unit.test.ts" name="createGoogleProvider &gt; handleCallback &gt; throws when ID token payload is null" time="0.002543077">
         </testcase>
-        <testcase classname="src/tests/unit/google.unit.test.ts" name="createGoogleProvider &gt; handleCallback &gt; throws when email is absent from payload" time="0.001921231">
+        <testcase classname="src/tests/unit/google.unit.test.ts" name="createGoogleProvider &gt; handleCallback &gt; throws when email is absent from payload" time="0.002508692">
         </testcase>
-        <testcase classname="src/tests/unit/google.unit.test.ts" name="createGoogleProvider &gt; handleCallback &gt; throws when email is not verified" time="0.003021539">
+        <testcase classname="src/tests/unit/google.unit.test.ts" name="createGoogleProvider &gt; handleCallback &gt; throws when email is not verified" time="0.004323615">
         </testcase>
-        <testcase classname="src/tests/unit/google.unit.test.ts" name="createGoogleProvider &gt; handleCallback &gt; throws when issuer is invalid" time="0.004864615">
+        <testcase classname="src/tests/unit/google.unit.test.ts" name="createGoogleProvider &gt; handleCallback &gt; throws when issuer is invalid" time="0.004323">
         </testcase>
-        <testcase classname="src/tests/unit/google.unit.test.ts" name="createGoogleProvider &gt; handleCallback &gt; accepts the alternate accounts.google.com issuer" time="0.004026153">
+        <testcase classname="src/tests/unit/google.unit.test.ts" name="createGoogleProvider &gt; handleCallback &gt; accepts the alternate accounts.google.com issuer" time="0.002196">
         </testcase>
-        <testcase classname="src/tests/unit/google.unit.test.ts" name="createGoogleProvider &gt; handleCallback &gt; returns correct profile, mode and userId on success" time="0.003476692">
+        <testcase classname="src/tests/unit/google.unit.test.ts" name="createGoogleProvider &gt; handleCallback &gt; returns correct profile, mode and userId on success" time="0.002309231">
         </testcase>
-        <testcase classname="src/tests/unit/google.unit.test.ts" name="createGoogleProvider &gt; handleCallback &gt; deletes the state key from Redis after success" time="0.002331154">
-        </testcase>
-    </testsuite>
-    <testsuite name="src/tests/unit/identityEngine.unit.test.ts" timestamp="2026-04-27T13:40:21.457Z" hostname="localhost" tests="14" failures="0" errors="0" skipped="0" time="0.084802154">
-        <testcase classname="src/tests/unit/identityEngine.unit.test.ts" name="createIdentityEngine &gt; missing email guard &gt; throws when profile has no email" time="0.019998461">
-        </testcase>
-        <testcase classname="src/tests/unit/identityEngine.unit.test.ts" name="createIdentityEngine &gt; existing provider login &gt; returns EXISTING_PROVIDER_LOGIN when provider is already registered" time="0.019820692">
-        </testcase>
-        <testcase classname="src/tests/unit/identityEngine.unit.test.ts" name="createIdentityEngine &gt; existing provider login &gt; does not call createUser or linkProvider for existing provider" time="0.001762692">
-        </testcase>
-        <testcase classname="src/tests/unit/identityEngine.unit.test.ts" name="createIdentityEngine &gt; link mode &gt; returns INVALID_LINK_REQUEST when userId is missing" time="0.002299693">
-        </testcase>
-        <testcase classname="src/tests/unit/identityEngine.unit.test.ts" name="createIdentityEngine &gt; link mode &gt; links provider and returns LINK_PROVIDER on success" time="0.002739154">
-        </testcase>
-        <testcase classname="src/tests/unit/identityEngine.unit.test.ts" name="createIdentityEngine &gt; link mode &gt; falls back to findUserByProvider when findUserByEmail returns null after link" time="0.004527077">
-        </testcase>
-        <testcase classname="src/tests/unit/identityEngine.unit.test.ts" name="createIdentityEngine &gt; link mode &gt; throws LINK_PROVIDER_user resolution failed when both lookups return null" time="0.003493538">
-        </testcase>
-        <testcase classname="src/tests/unit/identityEngine.unit.test.ts" name="createIdentityEngine &gt; existing user found by email &gt; returns EXISTING_PROVIDER_LOGIN when auto-link is permitted" time="0.002247384">
-        </testcase>
-        <testcase classname="src/tests/unit/identityEngine.unit.test.ts" name="createIdentityEngine &gt; existing user found by email &gt; returns LINK_REQUIRED when email is unverified and policy forbids auto-link" time="0.002510077">
-        </testcase>
-        <testcase classname="src/tests/unit/identityEngine.unit.test.ts" name="createIdentityEngine &gt; existing user found by email &gt; accepts email_verified as the string &quot;true&quot;" time="0.001526077">
-        </testcase>
-        <testcase classname="src/tests/unit/identityEngine.unit.test.ts" name="createIdentityEngine &gt; existing user found by email &gt; returns LINK_REQUIRED when verified but policy disables auto-link" time="0.002971769">
-        </testcase>
-        <testcase classname="src/tests/unit/identityEngine.unit.test.ts" name="createIdentityEngine &gt; new user creation &gt; returns NEW_USER_CREATION for a brand new user" time="0.005639769">
-        </testcase>
-        <testcase classname="src/tests/unit/identityEngine.unit.test.ts" name="createIdentityEngine &gt; new user creation &gt; calls createUser with correct args" time="0.001575769">
-        </testcase>
-        <testcase classname="src/tests/unit/identityEngine.unit.test.ts" name="createIdentityEngine &gt; new user creation &gt; signs tokens with the new user payload" time="0.001926846">
+        <testcase classname="src/tests/unit/google.unit.test.ts" name="createGoogleProvider &gt; handleCallback &gt; deletes the state key from Redis after success" time="0.002099692">
         </testcase>
     </testsuite>
-    <testsuite name="src/tests/unit/incognito.unit.test.ts" timestamp="2026-04-27T13:40:21.478Z" hostname="localhost" tests="3" failures="0" errors="0" skipped="0" time="0.203057846">
-        <testcase classname="src/tests/unit/incognito.unit.test.ts" name="createIncognito &gt; issues a signed guest token when no bearer token is present" time="0.130075307">
+    <testsuite name="src/tests/unit/identityEngine.unit.test.ts" timestamp="2026-04-27T14:02:33.197Z" hostname="localhost" tests="14" failures="0" errors="0" skipped="0" time="0.066505923">
+        <testcase classname="src/tests/unit/identityEngine.unit.test.ts" name="createIdentityEngine &gt; missing email guard &gt; throws when profile has no email" time="0.018296077">
         </testcase>
-        <testcase classname="src/tests/unit/incognito.unit.test.ts" name="createIncognito &gt; accepts a valid authenticated bearer token" time="0.035775077">
+        <testcase classname="src/tests/unit/identityEngine.unit.test.ts" name="createIdentityEngine &gt; existing provider login &gt; returns EXISTING_PROVIDER_LOGIN when provider is already registered" time="0.009530461">
         </testcase>
-        <testcase classname="src/tests/unit/incognito.unit.test.ts" name="createIncognito &gt; rejects invalid bearer tokens" time="0.027984923">
+        <testcase classname="src/tests/unit/identityEngine.unit.test.ts" name="createIdentityEngine &gt; existing provider login &gt; does not call createUser or linkProvider for existing provider" time="0.001753462">
+        </testcase>
+        <testcase classname="src/tests/unit/identityEngine.unit.test.ts" name="createIdentityEngine &gt; link mode &gt; returns INVALID_LINK_REQUEST when userId is missing" time="0.001826539">
+        </testcase>
+        <testcase classname="src/tests/unit/identityEngine.unit.test.ts" name="createIdentityEngine &gt; link mode &gt; links provider and returns LINK_PROVIDER on success" time="0.003009539">
+        </testcase>
+        <testcase classname="src/tests/unit/identityEngine.unit.test.ts" name="createIdentityEngine &gt; link mode &gt; falls back to findUserByProvider when findUserByEmail returns null after link" time="0.002024231">
+        </testcase>
+        <testcase classname="src/tests/unit/identityEngine.unit.test.ts" name="createIdentityEngine &gt; link mode &gt; throws LINK_PROVIDER_user resolution failed when both lookups return null" time="0.00144523">
+        </testcase>
+        <testcase classname="src/tests/unit/identityEngine.unit.test.ts" name="createIdentityEngine &gt; existing user found by email &gt; returns EXISTING_PROVIDER_LOGIN when auto-link is permitted" time="0.002104077">
+        </testcase>
+        <testcase classname="src/tests/unit/identityEngine.unit.test.ts" name="createIdentityEngine &gt; existing user found by email &gt; returns LINK_REQUIRED when email is unverified and policy forbids auto-link" time="0.002460923">
+        </testcase>
+        <testcase classname="src/tests/unit/identityEngine.unit.test.ts" name="createIdentityEngine &gt; existing user found by email &gt; accepts email_verified as the string &quot;true&quot;" time="0.001434385">
+        </testcase>
+        <testcase classname="src/tests/unit/identityEngine.unit.test.ts" name="createIdentityEngine &gt; existing user found by email &gt; returns LINK_REQUIRED when verified but policy disables auto-link" time="0.001420538">
+        </testcase>
+        <testcase classname="src/tests/unit/identityEngine.unit.test.ts" name="createIdentityEngine &gt; new user creation &gt; returns NEW_USER_CREATION for a brand new user" time="0.001648307">
+        </testcase>
+        <testcase classname="src/tests/unit/identityEngine.unit.test.ts" name="createIdentityEngine &gt; new user creation &gt; calls createUser with correct args" time="0.009364307">
+        </testcase>
+        <testcase classname="src/tests/unit/identityEngine.unit.test.ts" name="createIdentityEngine &gt; new user creation &gt; signs tokens with the new user payload" time="0.001390154">
         </testcase>
     </testsuite>
-    <testsuite name="src/tests/unit/ipService.unit.test.ts" timestamp="2026-04-27T13:40:21.483Z" hostname="localhost" tests="22" failures="0" errors="0" skipped="0" time="0.261529846">
-        <testcase classname="src/tests/unit/ipService.unit.test.ts" name="isAllowed &gt; returns true immediately when whitelist is disabled" time="0.011994154">
+    <testsuite name="src/tests/unit/incognito.unit.test.ts" timestamp="2026-04-27T14:02:33.230Z" hostname="localhost" tests="3" failures="0" errors="0" skipped="0" time="0.163606769">
+        <testcase classname="src/tests/unit/incognito.unit.test.ts" name="createIncognito &gt; issues a signed guest token when no bearer token is present" time="0.118316077">
         </testcase>
-        <testcase classname="src/tests/unit/ipService.unit.test.ts" name="isAllowed &gt; returns true when IP is in the Redis set" time="0.003518462">
+        <testcase classname="src/tests/unit/incognito.unit.test.ts" name="createIncognito &gt; accepts a valid authenticated bearer token" time="0.026098462">
         </testcase>
-        <testcase classname="src/tests/unit/ipService.unit.test.ts" name="isAllowed &gt; returns true for localhost ::1" time="0.002330461">
+        <testcase classname="src/tests/unit/incognito.unit.test.ts" name="createIncognito &gt; rejects invalid bearer tokens" time="0.013477539">
         </testcase>
-        <testcase classname="src/tests/unit/ipService.unit.test.ts" name="isAllowed &gt; returns true for localhost 127.0.0.1" time="0.002708">
+    </testsuite>
+    <testsuite name="src/tests/unit/ipService.unit.test.ts" timestamp="2026-04-27T14:02:33.240Z" hostname="localhost" tests="22" failures="0" errors="0" skipped="0" time="0.300889462">
+        <testcase classname="src/tests/unit/ipService.unit.test.ts" name="isAllowed &gt; returns true immediately when whitelist is disabled" time="0.016899077">
         </testcase>
-        <testcase classname="src/tests/unit/ipService.unit.test.ts" name="isAllowed &gt; returns true for IP matching a CIDR entry" time="0.016251385">
+        <testcase classname="src/tests/unit/ipService.unit.test.ts" name="isAllowed &gt; returns true when IP is in the Redis set" time="0.001471769">
         </testcase>
-        <testcase classname="src/tests/unit/ipService.unit.test.ts" name="isAllowed &gt; returns false for IP not in whitelist or CIDR" time="0.001121539">
+        <testcase classname="src/tests/unit/ipService.unit.test.ts" name="isAllowed &gt; returns true for localhost ::1" time="0.001071461">
         </testcase>
-        <testcase classname="src/tests/unit/ipService.unit.test.ts" name="isAllowed &gt; returns false when Redis throws" time="0.043587307">
+        <testcase classname="src/tests/unit/ipService.unit.test.ts" name="isAllowed &gt; returns true for localhost 127.0.0.1" time="0.001171461">
+        </testcase>
+        <testcase classname="src/tests/unit/ipService.unit.test.ts" name="isAllowed &gt; returns true for IP matching a CIDR entry" time="0.043589846">
+        </testcase>
+        <testcase classname="src/tests/unit/ipService.unit.test.ts" name="isAllowed &gt; returns false for IP not in whitelist or CIDR" time="0.001188616">
+        </testcase>
+        <testcase classname="src/tests/unit/ipService.unit.test.ts" name="isAllowed &gt; returns false when Redis throws" time="0.056264076">
             <system-err>
 whitelist check error: Error: Redis down
     at [90m/root/authenik8-core/[39msrc/tests/unit/ipService.unit.test.ts:111:43
@@ -352,109 +281,109 @@ whitelist check error: Error: Redis down
 
             </system-err>
         </testcase>
-        <testcase classname="src/tests/unit/ipService.unit.test.ts" name="addIP &gt; calls sadd and set with the correct keys" time="0.012593924">
+        <testcase classname="src/tests/unit/ipService.unit.test.ts" name="addIP &gt; calls sadd and set with the correct keys" time="0.011794231">
         </testcase>
-        <testcase classname="src/tests/unit/ipService.unit.test.ts" name="addIP &gt; accepts a custom TTL" time="0.002396308">
+        <testcase classname="src/tests/unit/ipService.unit.test.ts" name="addIP &gt; accepts a custom TTL" time="0.002156538">
         </testcase>
-        <testcase classname="src/tests/unit/ipService.unit.test.ts" name="removeIP &gt; calls srem and del with the correct keys" time="0.001811923">
+        <testcase classname="src/tests/unit/ipService.unit.test.ts" name="removeIP &gt; calls srem and del with the correct keys" time="0.003278846">
         </testcase>
-        <testcase classname="src/tests/unit/ipService.unit.test.ts" name="listIPs &gt; returns only entries whose TTL key still exists" time="0.002919385">
+        <testcase classname="src/tests/unit/ipService.unit.test.ts" name="listIPs &gt; returns only entries whose TTL key still exists" time="0.003912308">
         </testcase>
-        <testcase classname="src/tests/unit/ipService.unit.test.ts" name="listIPs &gt; returns empty array when no IPs are stored" time="0.00224">
+        <testcase classname="src/tests/unit/ipService.unit.test.ts" name="listIPs &gt; returns empty array when no IPs are stored" time="0.000960846">
         </testcase>
-        <testcase classname="src/tests/unit/ipService.unit.test.ts" name="whiteListMiddleware &gt; calls next() immediately when whitelist is disabled" time="0.002417846">
+        <testcase classname="src/tests/unit/ipService.unit.test.ts" name="whiteListMiddleware &gt; calls next() immediately when whitelist is disabled" time="0.001957">
         </testcase>
-        <testcase classname="src/tests/unit/ipService.unit.test.ts" name="whiteListMiddleware &gt; calls next() when IP is allowed" time="0.001863384">
+        <testcase classname="src/tests/unit/ipService.unit.test.ts" name="whiteListMiddleware &gt; calls next() when IP is allowed" time="0.0016">
         </testcase>
-        <testcase classname="src/tests/unit/ipService.unit.test.ts" name="whiteListMiddleware &gt; returns 403 when IP is not allowed" time="0.007154846">
+        <testcase classname="src/tests/unit/ipService.unit.test.ts" name="whiteListMiddleware &gt; returns 403 when IP is not allowed" time="0.003808077">
         </testcase>
-        <testcase classname="src/tests/unit/ipService.unit.test.ts" name="whiteListMiddleware &gt; uses x-forwarded-for when trustProxyHeaders is true" time="0.004467385">
+        <testcase classname="src/tests/unit/ipService.unit.test.ts" name="whiteListMiddleware &gt; uses x-forwarded-for when trustProxyHeaders is true" time="0.003728307">
         </testcase>
-        <testcase classname="src/tests/unit/ipService.unit.test.ts" name="whiteListMiddleware &gt; ignores x-forwarded-for when trustProxyHeaders is false" time="0.004054231">
+        <testcase classname="src/tests/unit/ipService.unit.test.ts" name="whiteListMiddleware &gt; ignores x-forwarded-for when trustProxyHeaders is false" time="0.001713538">
         </testcase>
-        <testcase classname="src/tests/unit/ipService.unit.test.ts" name="rateLimiterMiddleware &gt; calls next() when rate limit is not exceeded" time="0.059505769">
+        <testcase classname="src/tests/unit/ipService.unit.test.ts" name="rateLimiterMiddleware &gt; calls next() when rate limit is not exceeded" time="0.059162539">
         </testcase>
-        <testcase classname="src/tests/unit/ipService.unit.test.ts" name="rateLimiterMiddleware &gt; returns 429 when rate limit is exceeded" time="0.054461846">
+        <testcase classname="src/tests/unit/ipService.unit.test.ts" name="rateLimiterMiddleware &gt; returns 429 when rate limit is exceeded" time="0.059772384">
         </testcase>
-        <testcase classname="src/tests/unit/ipService.unit.test.ts" name="rateLimiterMiddleware &gt; calls next() immediately when rate limiter is disabled" time="0.001749615">
+        <testcase classname="src/tests/unit/ipService.unit.test.ts" name="rateLimiterMiddleware &gt; calls next() immediately when rate limiter is disabled" time="0.002916615">
         </testcase>
-        <testcase classname="src/tests/unit/ipService.unit.test.ts" name="helmetMiddleware &gt; returns a passthrough middleware when helmet is disabled" time="0.001907924">
+        <testcase classname="src/tests/unit/ipService.unit.test.ts" name="helmetMiddleware &gt; returns a passthrough middleware when helmet is disabled" time="0.002162385">
         </testcase>
-        <testcase classname="src/tests/unit/ipService.unit.test.ts" name="helmetMiddleware &gt; returns a function when helmet is enabled" time="0.006773">
-        </testcase>
-    </testsuite>
-    <testsuite name="src/tests/unit/jwtAuth.unit.test.ts" timestamp="2026-04-27T13:40:21.509Z" hostname="localhost" tests="21" failures="0" errors="0" skipped="0" time="0.157936308">
-        <testcase classname="src/tests/unit/jwtAuth.unit.test.ts" name="signToken &gt; returns a valid JWT string" time="0.024443462">
-        </testcase>
-        <testcase classname="src/tests/unit/jwtAuth.unit.test.ts" name="signToken &gt; uses provided expiry" time="0.003733153">
-        </testcase>
-        <testcase classname="src/tests/unit/jwtAuth.unit.test.ts" name="signToken &gt; defaults to 1h expiry when none provided" time="0.002610462">
-        </testcase>
-        <testcase classname="src/tests/unit/jwtAuth.unit.test.ts" name="signToken &gt; persists token to Redis when redisClient and userId are present" time="0.01003377">
-        </testcase>
-        <testcase classname="src/tests/unit/jwtAuth.unit.test.ts" name="signToken &gt; does not persist token when redisClient is absent" time="0.004671462">
-        </testcase>
-        <testcase classname="src/tests/unit/jwtAuth.unit.test.ts" name="signToken &gt; does not persist token when payload has no userId" time="0.003710692">
-        </testcase>
-        <testcase classname="src/tests/unit/jwtAuth.unit.test.ts" name="signToken &gt; logs error but does not throw when Redis.set fails" time="0.016574461">
-        </testcase>
-        <testcase classname="src/tests/unit/jwtAuth.unit.test.ts" name="guestToken &gt; returns a signed JWT with type=guest" time="0.005598384">
-        </testcase>
-        <testcase classname="src/tests/unit/jwtAuth.unit.test.ts" name="guestToken &gt; calls onGuestToken callback when provided" time="0.003997538">
-        </testcase>
-        <testcase classname="src/tests/unit/jwtAuth.unit.test.ts" name="guestToken &gt; does not throw when onGuestToken is not provided" time="0.003736">
-        </testcase>
-        <testcase classname="src/tests/unit/jwtAuth.unit.test.ts" name="verifyToken &gt; returns the decoded payload for a valid token" time="0.009289538">
-        </testcase>
-        <testcase classname="src/tests/unit/jwtAuth.unit.test.ts" name="verifyToken &gt; returns null for an invalid token" time="0.002811077">
-        </testcase>
-        <testcase classname="src/tests/unit/jwtAuth.unit.test.ts" name="verifyToken &gt; returns null for a token signed with a different secret" time="0.005451307">
-        </testcase>
-        <testcase classname="src/tests/unit/jwtAuth.unit.test.ts" name="authenticateJWT &gt; returns 401 when no token is present" time="0.003378692">
-        </testcase>
-        <testcase classname="src/tests/unit/jwtAuth.unit.test.ts" name="authenticateJWT &gt; extracts token from Authorization Bearer header" time="0.006024077">
-        </testcase>
-        <testcase classname="src/tests/unit/jwtAuth.unit.test.ts" name="authenticateJWT &gt; extracts token from cookie" time="0.005534539">
-        </testcase>
-        <testcase classname="src/tests/unit/jwtAuth.unit.test.ts" name="authenticateJWT &gt; returns 403 when token is invalid" time="0.00514677">
-        </testcase>
-        <testcase classname="src/tests/unit/jwtAuth.unit.test.ts" name="authenticateJWT &gt; attaches decoded payload to req.user on success" time="0.007292615">
-        </testcase>
-        <testcase classname="src/tests/unit/jwtAuth.unit.test.ts" name="authenticateJWT &gt; validates session token against Redis when redisClient is present" time="0.005708231">
-        </testcase>
-        <testcase classname="src/tests/unit/jwtAuth.unit.test.ts" name="authenticateJWT &gt; returns 403 when stored session token does not match" time="0.011229">
-        </testcase>
-        <testcase classname="src/tests/unit/jwtAuth.unit.test.ts" name="authenticateJWT &gt; skips Redis check when decoded token has no userId" time="0.006753231">
+        <testcase classname="src/tests/unit/ipService.unit.test.ts" name="helmetMiddleware &gt; returns a function when helmet is enabled" time="0.007720846">
         </testcase>
     </testsuite>
-    <testsuite name="src/tests/unit/limiter.unit.test.ts" timestamp="2026-04-27T13:40:21.532Z" hostname="localhost" tests="14" failures="0" errors="0" skipped="0" time="0.154934461">
-        <testcase classname="src/tests/unit/limiter.unit.test.ts" name="TokenBucket &gt; allows request when tokens are available" time="0.017989154">
+    <testsuite name="src/tests/unit/jwtAuth.unit.test.ts" timestamp="2026-04-27T14:02:33.291Z" hostname="localhost" tests="21" failures="0" errors="0" skipped="0" time="0.207161769">
+        <testcase classname="src/tests/unit/jwtAuth.unit.test.ts" name="signToken &gt; returns a valid JWT string" time="0.033225231">
         </testcase>
-        <testcase classname="src/tests/unit/limiter.unit.test.ts" name="TokenBucket &gt; denies request when tokens are exhausted" time="0.002001231">
+        <testcase classname="src/tests/unit/jwtAuth.unit.test.ts" name="signToken &gt; uses provided expiry" time="0.004353538">
         </testcase>
-        <testcase classname="src/tests/unit/limiter.unit.test.ts" name="TokenBucket &gt; refills tokens based on elapsed time" time="0.003750461">
+        <testcase classname="src/tests/unit/jwtAuth.unit.test.ts" name="signToken &gt; defaults to 1h expiry when none provided" time="0.003225616">
         </testcase>
-        <testcase classname="src/tests/unit/limiter.unit.test.ts" name="TokenBucket &gt; caps refilled tokens at capacity" time="0.001408616">
+        <testcase classname="src/tests/unit/jwtAuth.unit.test.ts" name="signToken &gt; persists token to Redis when redisClient and userId are present" time="0.012267077">
         </testcase>
-        <testcase classname="src/tests/unit/limiter.unit.test.ts" name="TokenBucket &gt; uses capacity as default when bucket state is empty" time="0.001574693">
+        <testcase classname="src/tests/unit/jwtAuth.unit.test.ts" name="signToken &gt; does not persist token when redisClient is absent" time="0.009944308">
         </testcase>
-        <testcase classname="src/tests/unit/limiter.unit.test.ts" name="TokenBucket &gt; handles null pipeline result gracefully" time="0.000908231">
+        <testcase classname="src/tests/unit/jwtAuth.unit.test.ts" name="signToken &gt; does not persist token when payload has no userId" time="0.007987308">
         </testcase>
-        <testcase classname="src/tests/unit/limiter.unit.test.ts" name="TokenBucket &gt; sets expiry on the rate limit key after consuming" time="0.005051692">
+        <testcase classname="src/tests/unit/jwtAuth.unit.test.ts" name="signToken &gt; logs error but does not throw when Redis.set fails" time="0.040212616">
         </testcase>
-        <testcase classname="src/tests/unit/limiter.unit.test.ts" name="initializeRateLimiter &gt; returns a TokenBucket instance" time="0.001532308">
+        <testcase classname="src/tests/unit/jwtAuth.unit.test.ts" name="guestToken &gt; returns a signed JWT with type=guest" time="0.006666461">
         </testcase>
-        <testcase classname="src/tests/unit/limiter.unit.test.ts" name="createRatelimiter &gt; calls next() when request is allowed" time="0.002906846">
+        <testcase classname="src/tests/unit/jwtAuth.unit.test.ts" name="guestToken &gt; calls onGuestToken callback when provided" time="0.003859385">
         </testcase>
-        <testcase classname="src/tests/unit/limiter.unit.test.ts" name="createRatelimiter &gt; returns 429 when request is denied" time="0.009181231">
+        <testcase classname="src/tests/unit/jwtAuth.unit.test.ts" name="guestToken &gt; does not throw when onGuestToken is not provided" time="0.003680308">
         </testcase>
-        <testcase classname="src/tests/unit/limiter.unit.test.ts" name="createRatelimiter &gt; sets X-RateLimit headers on every response" time="0.009188231">
+        <testcase classname="src/tests/unit/jwtAuth.unit.test.ts" name="verifyToken &gt; returns the decoded payload for a valid token" time="0.005534692">
         </testcase>
-        <testcase classname="src/tests/unit/limiter.unit.test.ts" name="createRatelimiter &gt; sets Retry-After header when denied" time="0.002248616">
+        <testcase classname="src/tests/unit/jwtAuth.unit.test.ts" name="verifyToken &gt; returns null for an invalid token" time="0.002196077">
         </testcase>
-        <testcase classname="src/tests/unit/limiter.unit.test.ts" name="createRatelimiter &gt; returns 503 when token bucket is unavailable" time="0.079404615">
+        <testcase classname="src/tests/unit/jwtAuth.unit.test.ts" name="verifyToken &gt; returns null for a token signed with a different secret" time="0.008232308">
+        </testcase>
+        <testcase classname="src/tests/unit/jwtAuth.unit.test.ts" name="authenticateJWT &gt; returns 401 when no token is present" time="0.002813539">
+        </testcase>
+        <testcase classname="src/tests/unit/jwtAuth.unit.test.ts" name="authenticateJWT &gt; extracts token from Authorization Bearer header" time="0.006980923">
+        </testcase>
+        <testcase classname="src/tests/unit/jwtAuth.unit.test.ts" name="authenticateJWT &gt; extracts token from cookie" time="0.004903615">
+        </testcase>
+        <testcase classname="src/tests/unit/jwtAuth.unit.test.ts" name="authenticateJWT &gt; returns 403 when token is invalid" time="0.005548077">
+        </testcase>
+        <testcase classname="src/tests/unit/jwtAuth.unit.test.ts" name="authenticateJWT &gt; attaches decoded payload to req.user on success" time="0.00853223">
+        </testcase>
+        <testcase classname="src/tests/unit/jwtAuth.unit.test.ts" name="authenticateJWT &gt; validates session token against Redis when redisClient is present" time="0.011073462">
+        </testcase>
+        <testcase classname="src/tests/unit/jwtAuth.unit.test.ts" name="authenticateJWT &gt; returns 403 when stored session token does not match" time="0.010940846">
+        </testcase>
+        <testcase classname="src/tests/unit/jwtAuth.unit.test.ts" name="authenticateJWT &gt; skips Redis check when decoded token has no userId" time="0.006193462">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/tests/unit/limiter.unit.test.ts" timestamp="2026-04-27T14:02:33.344Z" hostname="localhost" tests="14" failures="0" errors="0" skipped="0" time="0.284069615">
+        <testcase classname="src/tests/unit/limiter.unit.test.ts" name="TokenBucket &gt; allows request when tokens are available" time="0.027997538">
+        </testcase>
+        <testcase classname="src/tests/unit/limiter.unit.test.ts" name="TokenBucket &gt; denies request when tokens are exhausted" time="0.004523077">
+        </testcase>
+        <testcase classname="src/tests/unit/limiter.unit.test.ts" name="TokenBucket &gt; refills tokens based on elapsed time" time="0.001180076">
+        </testcase>
+        <testcase classname="src/tests/unit/limiter.unit.test.ts" name="TokenBucket &gt; caps refilled tokens at capacity" time="0.002442153">
+        </testcase>
+        <testcase classname="src/tests/unit/limiter.unit.test.ts" name="TokenBucket &gt; uses capacity as default when bucket state is empty" time="0.001333231">
+        </testcase>
+        <testcase classname="src/tests/unit/limiter.unit.test.ts" name="TokenBucket &gt; handles null pipeline result gracefully" time="0.001009461">
+        </testcase>
+        <testcase classname="src/tests/unit/limiter.unit.test.ts" name="TokenBucket &gt; sets expiry on the rate limit key after consuming" time="0.006361769">
+        </testcase>
+        <testcase classname="src/tests/unit/limiter.unit.test.ts" name="initializeRateLimiter &gt; returns a TokenBucket instance" time="0.003413923">
+        </testcase>
+        <testcase classname="src/tests/unit/limiter.unit.test.ts" name="createRatelimiter &gt; calls next() when request is allowed" time="0.029387769">
+        </testcase>
+        <testcase classname="src/tests/unit/limiter.unit.test.ts" name="createRatelimiter &gt; returns 429 when request is denied" time="0.004454846">
+        </testcase>
+        <testcase classname="src/tests/unit/limiter.unit.test.ts" name="createRatelimiter &gt; sets X-RateLimit headers on every response" time="0.011607385">
+        </testcase>
+        <testcase classname="src/tests/unit/limiter.unit.test.ts" name="createRatelimiter &gt; sets Retry-After header when denied" time="0.004614539">
+        </testcase>
+        <testcase classname="src/tests/unit/limiter.unit.test.ts" name="createRatelimiter &gt; returns 503 when token bucket is unavailable" time="0.165342769">
             <system-out>
-[dotenv@17.3.1] injecting env (0) from .env -- tip: 🔐 prevent building .env in docker: https://dotenvx.com/prebuild
+[dotenv@17.3.1] injecting env (0) from .env -- tip: 🛡️ auth for agents: https://vestauth.com
 
             </system-out>
             <system-err>
@@ -465,127 +394,127 @@ Rate limiter unavailable: Error: Redis down
 
             </system-err>
         </testcase>
-        <testcase classname="src/tests/unit/limiter.unit.test.ts" name="createRatelimiter &gt; uses keyGenerator output as the bucket key" time="0.002949231">
+        <testcase classname="src/tests/unit/limiter.unit.test.ts" name="createRatelimiter &gt; uses keyGenerator output as the bucket key" time="0.002330846">
         </testcase>
     </testsuite>
-    <testsuite name="src/tests/unit/lockHelper.unit.test.ts" timestamp="2026-04-27T13:40:21.562Z" hostname="localhost" tests="8" failures="0" errors="0" skipped="0" time="0.052369308">
-        <testcase classname="src/tests/unit/lockHelper.unit.test.ts" name="RedisLock &gt; acquire &gt; returns a string value when lock is acquired" time="0.018460923">
+    <testsuite name="src/tests/unit/lockHelper.unit.test.ts" timestamp="2026-04-27T14:02:33.378Z" hostname="localhost" tests="8" failures="0" errors="0" skipped="0" time="0.052678692">
+        <testcase classname="src/tests/unit/lockHelper.unit.test.ts" name="RedisLock &gt; acquire &gt; returns a string value when lock is acquired" time="0.014812615">
         </testcase>
-        <testcase classname="src/tests/unit/lockHelper.unit.test.ts" name="RedisLock &gt; acquire &gt; returns null when lock is already held" time="0.00175623">
+        <testcase classname="src/tests/unit/lockHelper.unit.test.ts" name="RedisLock &gt; acquire &gt; returns null when lock is already held" time="0.002055769">
         </testcase>
-        <testcase classname="src/tests/unit/lockHelper.unit.test.ts" name="RedisLock &gt; acquire &gt; calls redis.set with PX, ttl and NX options" time="0.012409847">
+        <testcase classname="src/tests/unit/lockHelper.unit.test.ts" name="RedisLock &gt; acquire &gt; calls redis.set with PX, ttl and NX options" time="0.015102769">
         </testcase>
-        <testcase classname="src/tests/unit/lockHelper.unit.test.ts" name="RedisLock &gt; acquire &gt; uses default ttl of 5000 when none provided" time="0.001705923">
+        <testcase classname="src/tests/unit/lockHelper.unit.test.ts" name="RedisLock &gt; acquire &gt; uses default ttl of 5000 when none provided" time="0.001542077">
         </testcase>
-        <testcase classname="src/tests/unit/lockHelper.unit.test.ts" name="RedisLock &gt; acquire &gt; returns a unique value on each acquisition" time="0.002106462">
+        <testcase classname="src/tests/unit/lockHelper.unit.test.ts" name="RedisLock &gt; acquire &gt; returns a unique value on each acquisition" time="0.001837231">
         </testcase>
-        <testcase classname="src/tests/unit/lockHelper.unit.test.ts" name="RedisLock &gt; release &gt; calls redis.eval with the lua script, key and value" time="0.002953">
+        <testcase classname="src/tests/unit/lockHelper.unit.test.ts" name="RedisLock &gt; release &gt; calls redis.eval with the lua script, key and value" time="0.003676616">
         </testcase>
-        <testcase classname="src/tests/unit/lockHelper.unit.test.ts" name="RedisLock &gt; release &gt; passes the correct number of keys (1) to eval" time="0.001091308">
+        <testcase classname="src/tests/unit/lockHelper.unit.test.ts" name="RedisLock &gt; release &gt; passes the correct number of keys (1) to eval" time="0.000960846">
         </testcase>
-        <testcase classname="src/tests/unit/lockHelper.unit.test.ts" name="RedisLock &gt; release &gt; resolves without throwing when Redis returns 0 (lock already gone)" time="0.00444">
-        </testcase>
-    </testsuite>
-    <testsuite name="src/tests/unit/memoryAdapter.unit.test.ts" timestamp="2026-04-27T13:40:21.583Z" hostname="localhost" tests="16" failures="0" errors="0" skipped="0" time="0.058350153">
-        <testcase classname="src/tests/unit/memoryAdapter.unit.test.ts" name="findUserByEmail &gt; returns null when no users exist" time="0.007500539">
-        </testcase>
-        <testcase classname="src/tests/unit/memoryAdapter.unit.test.ts" name="findUserByEmail &gt; returns the user when email matches" time="0.005313154">
-        </testcase>
-        <testcase classname="src/tests/unit/memoryAdapter.unit.test.ts" name="findUserByEmail &gt; returns null when email does not match" time="0.001073847">
-        </testcase>
-        <testcase classname="src/tests/unit/memoryAdapter.unit.test.ts" name="findUserByProvider &gt; returns null when no users exist" time="0.000931077">
-        </testcase>
-        <testcase classname="src/tests/unit/memoryAdapter.unit.test.ts" name="findUserByProvider &gt; returns the user when provider and providerId match" time="0.001071692">
-        </testcase>
-        <testcase classname="src/tests/unit/memoryAdapter.unit.test.ts" name="findUserByProvider &gt; returns null when provider matches but providerId does not" time="0.000918692">
-        </testcase>
-        <testcase classname="src/tests/unit/memoryAdapter.unit.test.ts" name="findUserByProvider &gt; returns null when providerId matches but provider does not" time="0.000802077">
-        </testcase>
-        <testcase classname="src/tests/unit/memoryAdapter.unit.test.ts" name="createUser &gt; returns a user with a generated id" time="0.001277769">
-        </testcase>
-        <testcase classname="src/tests/unit/memoryAdapter.unit.test.ts" name="createUser &gt; stores the correct email and provider" time="0.003246539">
-        </testcase>
-        <testcase classname="src/tests/unit/memoryAdapter.unit.test.ts" name="createUser &gt; generates unique ids for different users" time="0.003994692">
-        </testcase>
-        <testcase classname="src/tests/unit/memoryAdapter.unit.test.ts" name="linkProvider &gt; throws if user does not exist" time="0.007418538">
-        </testcase>
-        <testcase classname="src/tests/unit/memoryAdapter.unit.test.ts" name="linkProvider &gt; appends the new provider to the user" time="0.006784231">
-        </testcase>
-        <testcase classname="src/tests/unit/memoryAdapter.unit.test.ts" name="linkProvider &gt; allows finding user by the newly linked provider" time="0.002051154">
-        </testcase>
-        <testcase classname="src/tests/unit/memoryAdapter.unit.test.ts" name="dump &gt; returns empty array when store is empty" time="0.001378692">
-        </testcase>
-        <testcase classname="src/tests/unit/memoryAdapter.unit.test.ts" name="dump &gt; returns all created users" time="0.001288">
-        </testcase>
-        <testcase classname="src/tests/unit/memoryAdapter.unit.test.ts" name="reset &gt; clears all users from the store" time="0.001784308">
+        <testcase classname="src/tests/unit/lockHelper.unit.test.ts" name="RedisLock &gt; release &gt; resolves without throwing when Redis returns 0 (lock already gone)" time="0.002857923">
         </testcase>
     </testsuite>
-    <testsuite name="src/tests/unit/redisIdentityAdapters.unit.test.ts" timestamp="2026-04-27T13:40:21.619Z" hostname="localhost" tests="13" failures="0" errors="0" skipped="0" time="0.101000307">
-        <testcase classname="src/tests/unit/redisIdentityAdapters.unit.test.ts" name="createRedisIdentityAdapter &gt; findUserByEmail &gt; returns null when user does not exist" time="0.016360538">
+    <testsuite name="src/tests/unit/memoryAdapter.unit.test.ts" timestamp="2026-04-27T14:02:33.398Z" hostname="localhost" tests="16" failures="0" errors="0" skipped="0" time="0.081279923">
+        <testcase classname="src/tests/unit/memoryAdapter.unit.test.ts" name="findUserByEmail &gt; returns null when no users exist" time="0.006337538">
         </testcase>
-        <testcase classname="src/tests/unit/redisIdentityAdapters.unit.test.ts" name="createRedisIdentityAdapter &gt; findUserByEmail &gt; returns the user when found" time="0.004000308">
+        <testcase classname="src/tests/unit/memoryAdapter.unit.test.ts" name="findUserByEmail &gt; returns the user when email matches" time="0.006409154">
         </testcase>
-        <testcase classname="src/tests/unit/redisIdentityAdapters.unit.test.ts" name="createRedisIdentityAdapter &gt; findUserByProvider &gt; returns null when no matching provider" time="0.002187615">
+        <testcase classname="src/tests/unit/memoryAdapter.unit.test.ts" name="findUserByEmail &gt; returns null when email does not match" time="0.002008384">
         </testcase>
-        <testcase classname="src/tests/unit/redisIdentityAdapters.unit.test.ts" name="createRedisIdentityAdapter &gt; findUserByProvider &gt; returns the user when provider is linked" time="0.003150231">
+        <testcase classname="src/tests/unit/memoryAdapter.unit.test.ts" name="findUserByProvider &gt; returns null when no users exist" time="0.001188692">
         </testcase>
-        <testcase classname="src/tests/unit/redisIdentityAdapters.unit.test.ts" name="createRedisIdentityAdapter &gt; createUser &gt; throws if email lock cannot be acquired" time="0.008523461">
+        <testcase classname="src/tests/unit/memoryAdapter.unit.test.ts" name="findUserByProvider &gt; returns the user when provider and providerId match" time="0.001395462">
         </testcase>
-        <testcase classname="src/tests/unit/redisIdentityAdapters.unit.test.ts" name="createRedisIdentityAdapter &gt; createUser &gt; throws if provider lock cannot be acquired (and releases email lock)" time="0.025211461">
+        <testcase classname="src/tests/unit/memoryAdapter.unit.test.ts" name="findUserByProvider &gt; returns null when provider matches but providerId does not" time="0.000953846">
         </testcase>
-        <testcase classname="src/tests/unit/redisIdentityAdapters.unit.test.ts" name="createRedisIdentityAdapter &gt; createUser &gt; returns existing user if already registered by email" time="0.002596615">
+        <testcase classname="src/tests/unit/memoryAdapter.unit.test.ts" name="findUserByProvider &gt; returns null when providerId matches but provider does not" time="0.001006462">
         </testcase>
-        <testcase classname="src/tests/unit/redisIdentityAdapters.unit.test.ts" name="createRedisIdentityAdapter &gt; createUser &gt; returns existing user if already registered by provider" time="0.001309307">
+        <testcase classname="src/tests/unit/memoryAdapter.unit.test.ts" name="createUser &gt; returns a user with a generated id" time="0.001551923">
         </testcase>
-        <testcase classname="src/tests/unit/redisIdentityAdapters.unit.test.ts" name="createRedisIdentityAdapter &gt; createUser &gt; creates a brand new user with Redis multi transaction" time="0.009161615">
+        <testcase classname="src/tests/unit/memoryAdapter.unit.test.ts" name="createUser &gt; stores the correct email and provider" time="0.004425846">
         </testcase>
-        <testcase classname="src/tests/unit/redisIdentityAdapters.unit.test.ts" name="createRedisIdentityAdapter &gt; linkProvider &gt; throws if provider lock cannot be acquired" time="0.014782769">
+        <testcase classname="src/tests/unit/memoryAdapter.unit.test.ts" name="createUser &gt; generates unique ids for different users" time="0.002575384">
         </testcase>
-        <testcase classname="src/tests/unit/redisIdentityAdapters.unit.test.ts" name="createRedisIdentityAdapter &gt; linkProvider &gt; throws if provider is already linked to another user" time="0.002338539">
+        <testcase classname="src/tests/unit/memoryAdapter.unit.test.ts" name="linkProvider &gt; throws if user does not exist" time="0.007062769">
         </testcase>
-        <testcase classname="src/tests/unit/redisIdentityAdapters.unit.test.ts" name="createRedisIdentityAdapter &gt; linkProvider &gt; throws if user does not exist" time="0.001772615">
+        <testcase classname="src/tests/unit/memoryAdapter.unit.test.ts" name="linkProvider &gt; appends the new provider to the user" time="0.004354077">
         </testcase>
-        <testcase classname="src/tests/unit/redisIdentityAdapters.unit.test.ts" name="createRedisIdentityAdapter &gt; linkProvider &gt; adds new provider (or ignores duplicate) and updates Redis" time="0.001969846">
+        <testcase classname="src/tests/unit/memoryAdapter.unit.test.ts" name="linkProvider &gt; allows finding user by the newly linked provider" time="0.001546384">
+        </testcase>
+        <testcase classname="src/tests/unit/memoryAdapter.unit.test.ts" name="dump &gt; returns empty array when store is empty" time="0.000925616">
+        </testcase>
+        <testcase classname="src/tests/unit/memoryAdapter.unit.test.ts" name="dump &gt; returns all created users" time="0.001198461">
+        </testcase>
+        <testcase classname="src/tests/unit/memoryAdapter.unit.test.ts" name="reset &gt; clears all users from the store" time="0.024800308">
         </testcase>
     </testsuite>
-    <testsuite name="src/tests/unit/redisService.unit.test.ts" timestamp="2026-04-27T13:40:21.652Z" hostname="localhost" tests="18" failures="0" errors="0" skipped="0" time="0.135120615">
-        <testcase classname="src/tests/unit/redisService.unit.test.ts" name="validateRedisConfig &gt; throws when neither url nor host is provided" time="0.010251">
+    <testsuite name="src/tests/unit/redisIdentityAdapters.unit.test.ts" timestamp="2026-04-27T14:02:33.420Z" hostname="localhost" tests="13" failures="0" errors="0" skipped="0" time="0.087997231">
+        <testcase classname="src/tests/unit/redisIdentityAdapters.unit.test.ts" name="createRedisIdentityAdapter &gt; findUserByEmail &gt; returns null when user does not exist" time="0.009053231">
         </testcase>
-        <testcase classname="src/tests/unit/redisService.unit.test.ts" name="validateRedisConfig &gt; throws when URL does not start with redis:// or rediss://" time="0.001620538">
+        <testcase classname="src/tests/unit/redisIdentityAdapters.unit.test.ts" name="createRedisIdentityAdapter &gt; findUserByEmail &gt; returns the user when found" time="0.008499">
         </testcase>
-        <testcase classname="src/tests/unit/redisService.unit.test.ts" name="validateRedisConfig &gt; passes for a valid redis:// URL" time="0.00141777">
+        <testcase classname="src/tests/unit/redisIdentityAdapters.unit.test.ts" name="createRedisIdentityAdapter &gt; findUserByProvider &gt; returns null when no matching provider" time="0.002257462">
         </testcase>
-        <testcase classname="src/tests/unit/redisService.unit.test.ts" name="validateRedisConfig &gt; passes for a valid rediss:// URL" time="0.001709846">
+        <testcase classname="src/tests/unit/redisIdentityAdapters.unit.test.ts" name="createRedisIdentityAdapter &gt; findUserByProvider &gt; returns the user when provider is linked" time="0.002280615">
         </testcase>
-        <testcase classname="src/tests/unit/redisService.unit.test.ts" name="validateRedisConfig &gt; passes when host is provided" time="0.002400616">
+        <testcase classname="src/tests/unit/redisIdentityAdapters.unit.test.ts" name="createRedisIdentityAdapter &gt; createUser &gt; throws if email lock cannot be acquired" time="0.008075077">
         </testcase>
-        <testcase classname="src/tests/unit/redisService.unit.test.ts" name="getRedisConfig &gt; returns defaults when no options provided" time="0.001909769">
+        <testcase classname="src/tests/unit/redisIdentityAdapters.unit.test.ts" name="createRedisIdentityAdapter &gt; createUser &gt; throws if provider lock cannot be acquired (and releases email lock)" time="0.013942539">
         </testcase>
-        <testcase classname="src/tests/unit/redisService.unit.test.ts" name="getRedisConfig &gt; overrides host and port from options" time="0.000914385">
+        <testcase classname="src/tests/unit/redisIdentityAdapters.unit.test.ts" name="createRedisIdentityAdapter &gt; createUser &gt; returns existing user if already registered by email" time="0.006098769">
         </testcase>
-        <testcase classname="src/tests/unit/redisService.unit.test.ts" name="getRedisConfig &gt; uses password from options" time="0.000910538">
+        <testcase classname="src/tests/unit/redisIdentityAdapters.unit.test.ts" name="createRedisIdentityAdapter &gt; createUser &gt; returns existing user if already registered by provider" time="0.003307154">
         </testcase>
-        <testcase classname="src/tests/unit/redisService.unit.test.ts" name="getRedisConfig &gt; uses REDIS_PORT env var when no port option is given" time="0.000987692">
+        <testcase classname="src/tests/unit/redisIdentityAdapters.unit.test.ts" name="createRedisIdentityAdapter &gt; createUser &gt; creates a brand new user with Redis multi transaction" time="0.005767384">
         </testcase>
-        <testcase classname="src/tests/unit/redisService.unit.test.ts" name="setupRedis &gt; resolves with redisClient and redisStore on success" time="0.005770231">
+        <testcase classname="src/tests/unit/redisIdentityAdapters.unit.test.ts" name="createRedisIdentityAdapter &gt; linkProvider &gt; throws if provider lock cannot be acquired" time="0.002399769">
+        </testcase>
+        <testcase classname="src/tests/unit/redisIdentityAdapters.unit.test.ts" name="createRedisIdentityAdapter &gt; linkProvider &gt; throws if provider is already linked to another user" time="0.00432523">
+        </testcase>
+        <testcase classname="src/tests/unit/redisIdentityAdapters.unit.test.ts" name="createRedisIdentityAdapter &gt; linkProvider &gt; throws if user does not exist" time="0.003802769">
+        </testcase>
+        <testcase classname="src/tests/unit/redisIdentityAdapters.unit.test.ts" name="createRedisIdentityAdapter &gt; linkProvider &gt; adds new provider (or ignores duplicate) and updates Redis" time="0.005299077">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/tests/unit/redisService.unit.test.ts" timestamp="2026-04-27T14:02:33.448Z" hostname="localhost" tests="18" failures="0" errors="0" skipped="0" time="0.17552377">
+        <testcase classname="src/tests/unit/redisService.unit.test.ts" name="validateRedisConfig &gt; throws when neither url nor host is provided" time="0.015830539">
+        </testcase>
+        <testcase classname="src/tests/unit/redisService.unit.test.ts" name="validateRedisConfig &gt; throws when URL does not start with redis:// or rediss://" time="0.001490847">
+        </testcase>
+        <testcase classname="src/tests/unit/redisService.unit.test.ts" name="validateRedisConfig &gt; passes for a valid redis:// URL" time="0.002385">
+        </testcase>
+        <testcase classname="src/tests/unit/redisService.unit.test.ts" name="validateRedisConfig &gt; passes for a valid rediss:// URL" time="0.001350769">
+        </testcase>
+        <testcase classname="src/tests/unit/redisService.unit.test.ts" name="validateRedisConfig &gt; passes when host is provided" time="0.001278385">
+        </testcase>
+        <testcase classname="src/tests/unit/redisService.unit.test.ts" name="getRedisConfig &gt; returns defaults when no options provided" time="0.004361538">
+        </testcase>
+        <testcase classname="src/tests/unit/redisService.unit.test.ts" name="getRedisConfig &gt; overrides host and port from options" time="0.002715692">
+        </testcase>
+        <testcase classname="src/tests/unit/redisService.unit.test.ts" name="getRedisConfig &gt; uses password from options" time="0.002113539">
+        </testcase>
+        <testcase classname="src/tests/unit/redisService.unit.test.ts" name="getRedisConfig &gt; uses REDIS_PORT env var when no port option is given" time="0.002475923">
+        </testcase>
+        <testcase classname="src/tests/unit/redisService.unit.test.ts" name="setupRedis &gt; resolves with redisClient and redisStore on success" time="0.007070385">
             <system-out>
 Redis ping response: PONG
 
             </system-out>
         </testcase>
-        <testcase classname="src/tests/unit/redisService.unit.test.ts" name="setupRedis &gt; calls ping after ready event fires" time="0.003857615">
+        <testcase classname="src/tests/unit/redisService.unit.test.ts" name="setupRedis &gt; calls ping after ready event fires" time="0.00416123">
             <system-out>
 Redis ping response: PONG
 
             </system-out>
         </testcase>
-        <testcase classname="src/tests/unit/redisService.unit.test.ts" name="setupRedis &gt; registers on(&quot;error&quot;), on(&quot;ready&quot;), on(&quot;reconnecting&quot;) listeners" time="0.005530538">
+        <testcase classname="src/tests/unit/redisService.unit.test.ts" name="setupRedis &gt; registers on(&quot;error&quot;), on(&quot;ready&quot;), on(&quot;reconnecting&quot;) listeners" time="0.008981846">
             <system-out>
 Redis ping response: PONG
 
             </system-out>
         </testcase>
-        <testcase classname="src/tests/unit/redisService.unit.test.ts" name="setupRedis &gt; rejects and rethrows when Redis emits an error event" time="0.028591615">
+        <testcase classname="src/tests/unit/redisService.unit.test.ts" name="setupRedis &gt; rejects and rethrows when Redis emits an error event" time="0.034363307">
             <system-err>
 Redis setup failed: Error: Redis connection failed
     at Immediate.&lt;anonymous&gt; [90m(/root/authenik8-core/[39msrc/tests/unit/redisService.unit.test.ts:26:31[90m)[39m
@@ -593,7 +522,7 @@ Redis setup failed: Error: Redis connection failed
 
             </system-err>
         </testcase>
-        <testcase classname="src/tests/unit/redisService.unit.test.ts" name="setupRedis &gt; rejects when ping throws after ready" time="0.019200693">
+        <testcase classname="src/tests/unit/redisService.unit.test.ts" name="setupRedis &gt; rejects when ping throws after ready" time="0.021268385">
             <system-err>
 Redis setup failed: Error: ping failed
     at t.&lt;anonymous&gt; [90m(/root/authenik8-core/[39msrc/tests/unit/redisService.unit.test.ts:162:43[90m)[39m
@@ -609,93 +538,93 @@ Redis setup failed: Error: ping failed
 
             </system-err>
         </testcase>
-        <testcase classname="src/tests/unit/redisService.unit.test.ts" name="setupRedis &gt; merges custom storeOptions with defaults" time="0.027752307">
+        <testcase classname="src/tests/unit/redisService.unit.test.ts" name="setupRedis &gt; merges custom storeOptions with defaults" time="0.028672">
             <system-out>
 Redis ping response: PONG
 
             </system-out>
         </testcase>
-        <testcase classname="src/tests/unit/redisService.unit.test.ts" name="setupRedis &gt; passes password to Redis constructor when provided" time="0.003353231">
+        <testcase classname="src/tests/unit/redisService.unit.test.ts" name="setupRedis &gt; passes password to Redis constructor when provided" time="0.003248538">
             <system-out>
 Redis ping response: PONG
 
             </system-out>
         </testcase>
-        <testcase classname="src/tests/unit/redisService.unit.test.ts" name="initializeRedisClient &gt; returns a Redis client" time="0.003309231">
+        <testcase classname="src/tests/unit/redisService.unit.test.ts" name="initializeRedisClient &gt; returns a Redis client" time="0.002881462">
             <system-out>
 Redis ping response: PONG
 
             </system-out>
         </testcase>
-        <testcase classname="src/tests/unit/redisService.unit.test.ts" name="initializeRedisClient &gt; returns the same instance on repeated calls (singleton)" time="0.001222462">
+        <testcase classname="src/tests/unit/redisService.unit.test.ts" name="initializeRedisClient &gt; returns the same instance on repeated calls (singleton)" time="0.001376385">
         </testcase>
     </testsuite>
-    <testsuite name="src/tests/unit/refreshService.unit.test.ts" timestamp="2026-04-27T13:40:21.711Z" hostname="localhost" tests="11" failures="0" errors="0" skipped="0" time="0.086040846">
-        <testcase classname="src/tests/unit/refreshService.unit.test.ts" name="RefreshService &gt; generateRefreshToken &gt; generates token, adds jti, and stores it when tokenStore.set exists" time="0.031322769">
+    <testsuite name="src/tests/unit/refreshService.unit.test.ts" timestamp="2026-04-27T14:02:33.510Z" hostname="localhost" tests="11" failures="0" errors="0" skipped="0" time="0.068497539">
+        <testcase classname="src/tests/unit/refreshService.unit.test.ts" name="RefreshService &gt; generateRefreshToken &gt; generates token, adds jti, and stores it when tokenStore.set exists" time="0.016573769">
         </testcase>
-        <testcase classname="src/tests/unit/refreshService.unit.test.ts" name="RefreshService &gt; generateRefreshToken &gt; does not call set when tokenStore.set is missing" time="0.008330385">
+        <testcase classname="src/tests/unit/refreshService.unit.test.ts" name="RefreshService &gt; generateRefreshToken &gt; does not call set when tokenStore.set is missing" time="0.005914385">
         </testcase>
-        <testcase classname="src/tests/unit/refreshService.unit.test.ts" name="RefreshService &gt; generateRefreshToken &gt; throws if userId is missing" time="0.009384384">
+        <testcase classname="src/tests/unit/refreshService.unit.test.ts" name="RefreshService &gt; generateRefreshToken &gt; throws if userId is missing" time="0.005941">
         </testcase>
-        <testcase classname="src/tests/unit/refreshService.unit.test.ts" name="RefreshService &gt; refresh &gt; throws MissingTokenError when no refreshToken is provided" time="0.002788692">
+        <testcase classname="src/tests/unit/refreshService.unit.test.ts" name="RefreshService &gt; refresh &gt; throws MissingTokenError when no refreshToken is provided" time="0.003213154">
         </testcase>
-        <testcase classname="src/tests/unit/refreshService.unit.test.ts" name="RefreshService &gt; refresh &gt; throws InvalidTokenError when jwt.verify fails" time="0.005022538">
+        <testcase classname="src/tests/unit/refreshService.unit.test.ts" name="RefreshService &gt; refresh &gt; throws InvalidTokenError when jwt.verify fails" time="0.005728308">
         </testcase>
-        <testcase classname="src/tests/unit/refreshService.unit.test.ts" name="RefreshService &gt; refresh &gt; throws InvalidTokenError when lock cannot be acquired (concurrent refresh)" time="0.003472923">
+        <testcase classname="src/tests/unit/refreshService.unit.test.ts" name="RefreshService &gt; refresh &gt; throws InvalidTokenError when lock cannot be acquired (concurrent refresh)" time="0.003986846">
         </testcase>
-        <testcase classname="src/tests/unit/refreshService.unit.test.ts" name="RefreshService &gt; refresh &gt; throws InvalidTokenError when stored token does not match" time="0.002314692">
+        <testcase classname="src/tests/unit/refreshService.unit.test.ts" name="RefreshService &gt; refresh &gt; throws InvalidTokenError when stored token does not match" time="0.002238846">
         </testcase>
-        <testcase classname="src/tests/unit/refreshService.unit.test.ts" name="RefreshService &gt; refresh &gt; successfully refreshes token (no rotation)" time="0.003813231">
+        <testcase classname="src/tests/unit/refreshService.unit.test.ts" name="RefreshService &gt; refresh &gt; successfully refreshes token (no rotation)" time="0.005417846">
         </testcase>
-        <testcase classname="src/tests/unit/refreshService.unit.test.ts" name="RefreshService &gt; refresh &gt; rotates refresh token when rotateRefreshTokens = true" time="0.005029">
+        <testcase classname="src/tests/unit/refreshService.unit.test.ts" name="RefreshService &gt; refresh &gt; rotates refresh token when rotateRefreshTokens = true" time="0.003028231">
         </testcase>
-        <testcase classname="src/tests/unit/refreshService.unit.test.ts" name="RefreshService &gt; refresh &gt; detects concurrent refresh during rotation (getset returns unexpected token)" time="0.003915616">
+        <testcase classname="src/tests/unit/refreshService.unit.test.ts" name="RefreshService &gt; refresh &gt; detects concurrent refresh during rotation (getset returns unexpected token)" time="0.002172">
         </testcase>
-        <testcase classname="src/tests/unit/refreshService.unit.test.ts" name="RefreshService &gt; refresh &gt; releases lock in finally block even when an error occurs" time="0.003398769">
-        </testcase>
-    </testsuite>
-    <testsuite name="src/tests/unit/requireAdmin.unit.test.ts" timestamp="2026-04-27T13:40:21.739Z" hostname="localhost" tests="4" failures="0" errors="0" skipped="0" time="0.243116539">
-        <testcase classname="src/tests/unit/requireAdmin.unit.test.ts" name="requireAdmin &gt; rejects requests without a token" time="0.148374462">
-        </testcase>
-        <testcase classname="src/tests/unit/requireAdmin.unit.test.ts" name="requireAdmin &gt; rejects non-admin roles" time="0.038434154">
-        </testcase>
-        <testcase classname="src/tests/unit/requireAdmin.unit.test.ts" name="requireAdmin &gt; rejects tokens without an admin role" time="0.025879077">
-        </testcase>
-        <testcase classname="src/tests/unit/requireAdmin.unit.test.ts" name="requireAdmin &gt; allows admin tokens" time="0.021202692">
+        <testcase classname="src/tests/unit/refreshService.unit.test.ts" name="RefreshService &gt; refresh &gt; releases lock in finally block even when an error occurs" time="0.003256308">
         </testcase>
     </testsuite>
-    <testsuite name="src/tests/unit/securityModule.unit.test.ts" timestamp="2026-04-27T13:40:21.751Z" hostname="localhost" tests="2" failures="0" errors="0" skipped="0" time="0.018093846">
-        <testcase classname="src/tests/unit/securityModule.unit.test.ts" name="SecurityModule whitelist middleware &gt; does not trust x-forwarded-for by default" time="0.009201231">
+    <testsuite name="src/tests/unit/requireAdmin.unit.test.ts" timestamp="2026-04-27T14:02:33.539Z" hostname="localhost" tests="4" failures="0" errors="0" skipped="0" time="0.210652308">
+        <testcase classname="src/tests/unit/requireAdmin.unit.test.ts" name="requireAdmin &gt; rejects requests without a token" time="0.121671154">
         </testcase>
-        <testcase classname="src/tests/unit/securityModule.unit.test.ts" name="SecurityModule whitelist middleware &gt; can trust x-forwarded-for when explicitly enabled" time="0.001256692">
+        <testcase classname="src/tests/unit/requireAdmin.unit.test.ts" name="requireAdmin &gt; rejects non-admin roles" time="0.034781846">
         </testcase>
-    </testsuite>
-    <testsuite name="src/tests/unit/userStorage.unit.test.ts" timestamp="2026-04-27T13:40:21.758Z" hostname="localhost" tests="3" failures="0" errors="0" skipped="0" time="0.028955077">
-        <testcase classname="src/tests/unit/userStorage.unit.test.ts" name="Store &gt; register &gt; throws when a user with that email already exists" time="0.014707154">
+        <testcase classname="src/tests/unit/requireAdmin.unit.test.ts" name="requireAdmin &gt; rejects tokens without an admin role" time="0.019479077">
         </testcase>
-        <testcase classname="src/tests/unit/userStorage.unit.test.ts" name="Store &gt; register &gt; creates the user when email is not taken" time="0.005737">
-        </testcase>
-        <testcase classname="src/tests/unit/userStorage.unit.test.ts" name="Store &gt; register &gt; calls findByEmail with the provided email" time="0.001207462">
+        <testcase classname="src/tests/unit/requireAdmin.unit.test.ts" name="requireAdmin &gt; allows admin tokens" time="0.02728977">
         </testcase>
     </testsuite>
-    <testsuite name="src/tests/unit/userStore.unit.test.ts" timestamp="2026-04-27T13:40:21.767Z" hostname="localhost" tests="9" failures="0" errors="0" skipped="0" time="0.043745616">
-        <testcase classname="src/tests/unit/userStore.unit.test.ts" name="In-memory OAuth User Store &gt; findUserByEmail &gt; returns undefined when user does not exist" time="0.012419692">
+    <testsuite name="src/tests/unit/securityModule.unit.test.ts" timestamp="2026-04-27T14:02:33.550Z" hostname="localhost" tests="2" failures="0" errors="0" skipped="0" time="0.014611077">
+        <testcase classname="src/tests/unit/securityModule.unit.test.ts" name="SecurityModule whitelist middleware &gt; does not trust x-forwarded-for by default" time="0.008261231">
         </testcase>
-        <testcase classname="src/tests/unit/userStore.unit.test.ts" name="In-memory OAuth User Store &gt; findUserByEmail &gt; returns the user when email matches" time="0.003012538">
+        <testcase classname="src/tests/unit/securityModule.unit.test.ts" name="SecurityModule whitelist middleware &gt; can trust x-forwarded-for when explicitly enabled" time="0.001175153">
         </testcase>
-        <testcase classname="src/tests/unit/userStore.unit.test.ts" name="In-memory OAuth User Store &gt; findUserByProvider &gt; returns undefined when no matching provider" time="0.001087384">
+    </testsuite>
+    <testsuite name="src/tests/unit/userStorage.unit.test.ts" timestamp="2026-04-27T14:02:33.558Z" hostname="localhost" tests="3" failures="0" errors="0" skipped="0" time="0.035058385">
+        <testcase classname="src/tests/unit/userStorage.unit.test.ts" name="Store &gt; register &gt; throws when a user with that email already exists" time="0.018829308">
         </testcase>
-        <testcase classname="src/tests/unit/userStore.unit.test.ts" name="In-memory OAuth User Store &gt; findUserByProvider &gt; finds user by provider + providerId" time="0.002866154">
+        <testcase classname="src/tests/unit/userStorage.unit.test.ts" name="Store &gt; register &gt; creates the user when email is not taken" time="0.007651077">
         </testcase>
-        <testcase classname="src/tests/unit/userStore.unit.test.ts" name="In-memory OAuth User Store &gt; createUser &gt; creates a new user with UUID, email and initial provider" time="0.003028616">
+        <testcase classname="src/tests/unit/userStorage.unit.test.ts" name="Store &gt; register &gt; calls findByEmail with the provided email" time="0.001553">
         </testcase>
-        <testcase classname="src/tests/unit/userStore.unit.test.ts" name="In-memory OAuth User Store &gt; createUser &gt; adds the user to the store" time="0.001865539">
+    </testsuite>
+    <testsuite name="src/tests/unit/userStore.unit.test.ts" timestamp="2026-04-27T14:02:33.566Z" hostname="localhost" tests="9" failures="0" errors="0" skipped="0" time="0.060016">
+        <testcase classname="src/tests/unit/userStore.unit.test.ts" name="In-memory OAuth User Store &gt; findUserByEmail &gt; returns undefined when user does not exist" time="0.012453">
         </testcase>
-        <testcase classname="src/tests/unit/userStore.unit.test.ts" name="In-memory OAuth User Store &gt; linkProvider &gt; throws when userId does not exist" time="0.006500615">
+        <testcase classname="src/tests/unit/userStore.unit.test.ts" name="In-memory OAuth User Store &gt; findUserByEmail &gt; returns the user when email matches" time="0.006540923">
         </testcase>
-        <testcase classname="src/tests/unit/userStore.unit.test.ts" name="In-memory OAuth User Store &gt; linkProvider &gt; adds a new provider if not already linked" time="0.004183615">
+        <testcase classname="src/tests/unit/userStore.unit.test.ts" name="In-memory OAuth User Store &gt; findUserByProvider &gt; returns undefined when no matching provider" time="0.00117077">
         </testcase>
-        <testcase classname="src/tests/unit/userStore.unit.test.ts" name="In-memory OAuth User Store &gt; linkProvider &gt; does not duplicate an already-linked provider" time="0.001870769">
+        <testcase classname="src/tests/unit/userStore.unit.test.ts" name="In-memory OAuth User Store &gt; findUserByProvider &gt; finds user by provider + providerId" time="0.004683077">
+        </testcase>
+        <testcase classname="src/tests/unit/userStore.unit.test.ts" name="In-memory OAuth User Store &gt; createUser &gt; creates a new user with UUID, email and initial provider" time="0.004985615">
+        </testcase>
+        <testcase classname="src/tests/unit/userStore.unit.test.ts" name="In-memory OAuth User Store &gt; createUser &gt; adds the user to the store" time="0.001063385">
+        </testcase>
+        <testcase classname="src/tests/unit/userStore.unit.test.ts" name="In-memory OAuth User Store &gt; linkProvider &gt; throws when userId does not exist" time="0.006502231">
+        </testcase>
+        <testcase classname="src/tests/unit/userStore.unit.test.ts" name="In-memory OAuth User Store &gt; linkProvider &gt; adds a new provider if not already linked" time="0.004867615">
+        </testcase>
+        <testcase classname="src/tests/unit/userStore.unit.test.ts" name="In-memory OAuth User Store &gt; linkProvider &gt; does not duplicate an already-linked provider" time="0.001411462">
         </testcase>
     </testsuite>
 </testsuites>
