@@ -2,7 +2,6 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.memoryAdapter = void 0;
 const crypto_1 = require("crypto");
-// 🔥 SINGLE SOURCE OF TRUTH (REAL MEMORY STORE)
 const users = new Map();
 exports.memoryAdapter = {
     async findUserByEmail(email) {
@@ -27,11 +26,13 @@ exports.memoryAdapter = {
     },
     async linkProvider(userId, provider, providerId) {
         const user = users.get(userId);
-        if (!user) {
+        if (!user)
             throw new Error(`User not found: ${userId}`);
+        const alreadyLinked = user.providers.some((p) => p.provider === provider && p.providerId === providerId);
+        if (!alreadyLinked) {
+            user.providers.push({ provider, providerId });
+            users.set(userId, user);
         }
-        user.providers.push({ provider, providerId });
-        users.set(userId, user);
     },
     reset() {
         users.clear();

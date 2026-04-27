@@ -1,7 +1,7 @@
 import express from "express";
 import request from "supertest";
 import jwt from "jsonwebtoken";
-import { createIncognito } from "../auth/guestModeService";
+import { createIncognito } from "../../auth/guestModeService";
 
 describe("createIncognito", () => {
   const jwtSecret = "incognito-unit-secret";

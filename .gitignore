@@ -3,3 +3,9 @@ node_modules/
 dumb.rdb
 coverage/
 reports/
+**/*.html
+coverage/
+
+
+dump.rdb
+*.rdb

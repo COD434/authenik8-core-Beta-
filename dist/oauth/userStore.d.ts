@@ -1,3 +1,4 @@
+export declare const resetStore: () => void;
 export type Provider = "google" | "github";
 export type User = {
     id: string;

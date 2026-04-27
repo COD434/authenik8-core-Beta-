@@ -1,0 +1,278 @@
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { createGoogleProvider } from '../../oauth/providers/google';
+import type { Request, Response } from 'express';
+
+
+vi.mock('google-auth-library', () => {
+  const mockGetPayload = vi.fn();
+  const mockVerifyIdToken = vi.fn().mockResolvedValue({ getPayload: mockGetPayload });
+  const MockOAuth2Client = vi.fn(() => ({ verifyIdToken: mockVerifyIdToken }));
+  return { OAuth2Client: MockOAuth2Client, mockGetPayload, mockVerifyIdToken };
+});
+
+import { mockGetPayload, mockVerifyIdToken } from 'google-auth-library';
+
+const mockRedis = {
+  setex: vi.fn().mockResolvedValue('OK'),
+  get: vi.fn(),
+  del: vi.fn().mockResolvedValue(1),
+};
+
+const mockIdentityEngine = { resolveOAuth: vi.fn() };
+
+const mockConfig = {
+  clientId: 'google-client-id',
+  clientSecret: 'google-client-secret',
+  redirectUri: 'https://myapp.com/auth/google/callback',
+};
+
+const mockReq = (overrides: Partial<Request> = {}) =>
+  ({
+    query: {},
+    path: '/auth/google',
+    user: null,
+    ...overrides,
+  }) as unknown as Request;
+
+const mockRes = () => {
+  const res = {
+    redirect: vi.fn(),
+    status: vi.fn().mockReturnThis(),
+    json: vi.fn().mockReturnThis(),
+  };
+  return res as unknown as Response;
+};
+
+function makeStoredState(overrides = {}) {
+  return JSON.stringify({ userId: null, mode: 'login', ...overrides });
+}
+
+const validPayload = {
+  email: 'dev@example.com',
+  name: 'Dev User',
+  sub: 'google-sub-999',
+  email_verified: true,
+  iss: 'https://accounts.google.com',
+};
+
+function mockFetchSequence(...responses: Array<{ ok?: boolean; text?: string; json?: any }>) {
+  let call = 0;
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => {
+      const r = responses[call++];
+      return {
+        ok: r.ok ?? true,
+        text: async () => r.text ?? '',
+        json: async () => r.json ?? {},
+      };
+    })
+  );
+}
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  vi.unstubAllGlobals();
+});
+
+describe('createGoogleProvider', () => {
+  let provider: ReturnType<typeof createGoogleProvider>;
+
+  beforeEach(() => {
+    provider = createGoogleProvider(mockConfig, mockRedis as any, mockIdentityEngine as any);
+  });
+
+  // ─── redirect ──────────────────────────────────────────────────────────
+  describe('redirect', () => {
+    it('stores state in Redis and redirects to Google', async () => {
+      const req = mockReq();
+      const res = mockRes();
+
+      await provider.redirect(req, res);
+
+      expect(mockRedis.setex).toHaveBeenCalledWith(
+        expect.stringMatching(/^oauth:state:/),
+        300,
+        expect.stringContaining('"mode":"login"')
+      );
+      expect(res.redirect).toHaveBeenCalledWith(
+        expect.stringContaining('https://accounts.google.com/o/oauth2/v2/auth')
+      );
+    });
+
+    it('includes required OAuth params in the redirect URL', async () => {
+      const req = mockReq();
+      const res = mockRes();
+
+      await provider.redirect(req, res);
+
+      const url = new URL((res.redirect as any).mock.calls[0][0]);
+      expect(url.searchParams.get('client_id')).toBe(mockConfig.clientId);
+      expect(url.searchParams.get('redirect_uri')).toBe(mockConfig.redirectUri);
+      expect(url.searchParams.get('response_type')).toBe('code');
+      expect(url.searchParams.get('scope')).toBe('openid email profile');
+      expect(url.searchParams.get('access_type')).toBe('offline');
+      expect(url.searchParams.get('prompt')).toBe('consent');
+      expect(url.searchParams.get('state')).toBeTruthy();
+    });
+
+    it('sets mode=link when path contains "link"', async () => {
+      const req = mockReq({ path: '/auth/google/link' });
+      const res = mockRes();
+
+      await provider.redirect(req, res);
+
+      expect(mockRedis.setex).toHaveBeenCalledWith(
+        expect.any(String),
+        300,
+        expect.stringContaining('"mode":"link"')
+      );
+    });
+
+    it('stores userId from req.user in Redis state', async () => {
+      const req = mockReq({ user: { userId: 'user-123' } as any });
+      const res = mockRes();
+
+      await provider.redirect(req, res);
+
+      expect(mockRedis.setex).toHaveBeenCalledWith(
+        expect.any(String),
+        300,
+        expect.stringContaining('"userId":"user-123"')
+      );
+    });
+
+    it('returns 500 when Redis throws', async () => {
+      mockRedis.setex.mockRejectedValueOnce(new Error('Redis down'));
+      const req = mockReq();
+      const res = mockRes();
+
+      await provider.redirect(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(500);
+      expect(res.json).toHaveBeenCalledWith({ error: 'OAuth redirect failed' });
+      expect(res.redirect).not.toHaveBeenCalled();
+    });
+  });
+
+  // ─── handleCallback ────────────────────────────────────────────────────
+  describe('handleCallback', () => {
+    it('throws when state is missing', async () => {
+      const req = mockReq({ query: { code: 'abc' } });
+      await expect(provider.handleCallback(req)).rejects.toThrow('OAuthError:Missing state');
+    });
+
+    it('throws when state is not found in Redis', async () => {
+      mockRedis.get.mockResolvedValue(null);
+      const req = mockReq({ query: { code: 'abc', state: 'stale' } });
+      await expect(provider.handleCallback(req)).rejects.toThrow('OAuthError:Invalid or expired state');
+    });
+
+    it('throws when code is missing', async () => {
+      mockRedis.get.mockResolvedValue(makeStoredState());
+      const req = mockReq({ query: { state: 'valid-state' } });
+      await expect(provider.handleCallback(req)).rejects.toThrow('OauthError:Missing authorization code');
+    });
+
+    it('throws when token exchange response is not ok', async () => {
+      mockRedis.get.mockResolvedValue(makeStoredState());
+      mockFetchSequence({ ok: false, text: 'Bad Request' });
+
+      const req = mockReq({ query: { code: 'mycode', state: 'valid-state' } });
+      await expect(provider.handleCallback(req)).rejects.toThrow('OAuthError:Token exchange failed->Bad Request');
+    });
+
+    it('throws when no access_token is returned', async () => {
+      mockRedis.get.mockResolvedValue(makeStoredState());
+      mockFetchSequence({ json: { id_token: 'some-id-token' } }); // missing access_token
+
+      const req = mockReq({ query: { code: 'mycode', state: 'valid-state' } });
+      await expect(provider.handleCallback(req)).rejects.toThrow('OAuthError:No access token returned');
+    });
+
+    it('throws when no id_token is returned', async () => {
+      mockRedis.get.mockResolvedValue(makeStoredState());
+      mockFetchSequence({ json: { access_token: 'goog-token' } }); // missing id_token
+
+      const req = mockReq({ query: { code: 'mycode', state: 'valid-state' } });
+      await expect(provider.handleCallback(req)).rejects.toThrow('OAuthError:No id_token returned from Google');
+    });
+
+    it('throws when ID token payload is null', async () => {
+      mockRedis.get.mockResolvedValue(makeStoredState());
+      mockFetchSequence({ json: { access_token: 'goog-token', id_token: 'id-tok' } });
+      vi.mocked(mockGetPayload).mockReturnValue(null);
+
+      const req = mockReq({ query: { code: 'mycode', state: 'valid-state' } });
+      await expect(provider.handleCallback(req)).rejects.toThrow('OAuthError:Invalid ID token payload');
+    });
+
+    it('throws when email is absent from payload', async () => {
+      mockRedis.get.mockResolvedValue(makeStoredState());
+      mockFetchSequence({ json: { access_token: 'goog-token', id_token: 'id-tok' } });
+      vi.mocked(mockGetPayload).mockReturnValue({ ...validPayload, email: undefined });
+
+      const req = mockReq({ query: { code: 'mycode', state: 'valid-state' } });
+      await expect(provider.handleCallback(req)).rejects.toThrow('OAuthError:Email not present in ID token');
+    });
+
+    it('throws when email is not verified', async () => {
+      mockRedis.get.mockResolvedValue(makeStoredState());
+      mockFetchSequence({ json: { access_token: 'goog-token', id_token: 'id-tok' } });
+      vi.mocked(mockGetPayload).mockReturnValue({ ...validPayload, email_verified: false });
+
+      const req = mockReq({ query: { code: 'mycode', state: 'valid-state' } });
+      await expect(provider.handleCallback(req)).rejects.toThrow('OAuthError:Email not verified');
+    });
+
+    it('throws when issuer is invalid', async () => {
+      mockRedis.get.mockResolvedValue(makeStoredState());
+      mockFetchSequence({ json: { access_token: 'goog-token', id_token: 'id-tok' } });
+      vi.mocked(mockGetPayload).mockReturnValue({ ...validPayload, iss: 'https://evil.com' });
+
+      const req = mockReq({ query: { code: 'mycode', state: 'valid-state' } });
+      await expect(provider.handleCallback(req)).rejects.toThrow('OAuthError: Invalid issuer');
+    });
+
+    it('accepts the alternate accounts.google.com issuer', async () => {
+      mockRedis.get.mockResolvedValue(makeStoredState());
+      mockFetchSequence({ json: { access_token: 'goog-token', id_token: 'id-tok' } });
+      vi.mocked(mockGetPayload).mockReturnValue({ ...validPayload, iss: 'accounts.google.com' });
+
+      const req = mockReq({ query: { code: 'mycode', state: 'valid-state' } });
+      const result = await provider.handleCallback(req);
+
+      expect(result.profile.provider).toBe('google');
+    });
+
+    it('returns correct profile, mode and userId on success', async () => {
+      mockRedis.get.mockResolvedValue(makeStoredState({ userId: 'user-123', mode: 'link' }));
+      mockFetchSequence({ json: { access_token: 'goog-token', id_token: 'id-tok' } });
+      vi.mocked(mockGetPayload).mockReturnValue(validPayload);
+
+      const req = mockReq({ query: { code: 'mycode', state: 'valid-state' } });
+      const result = await provider.handleCallback(req);
+
+      expect(result.profile).toEqual({
+        email: 'dev@example.com',
+        name: 'Dev User',
+        provider: 'google',
+        providerId: 'google-sub-999',
+        email_verified: true,
+      });
+      expect(result.mode).toBe('link');
+      expect(result.userId).toBe('user-123');
+    });
+
+    it('deletes the state key from Redis after success', async () => {
+      mockRedis.get.mockResolvedValue(makeStoredState());
+      mockFetchSequence({ json: { access_token: 'goog-token', id_token: 'id-tok' } });
+      vi.mocked(mockGetPayload).mockReturnValue(validPayload);
+
+      const req = mockReq({ query: { code: 'mycode', state: 'valid-state' } });
+      await provider.handleCallback(req);
+
+      expect(mockRedis.del).toHaveBeenCalledWith('oauth:state:valid-state');
+    });
+  });
+});

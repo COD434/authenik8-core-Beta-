@@ -3,11 +3,16 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.resetStore = void 0;
 exports.findUserByEmail = findUserByEmail;
 exports.findUserByProvider = findUserByProvider;
 exports.createUser = createUser;
 exports.linkProvider = linkProvider;
 const crypto_1 = __importDefault(require("crypto"));
+const resetStore = () => {
+    users.splice(0);
+};
+exports.resetStore = resetStore;
 const users = [];
 async function findUserByEmail(email) {
     return users.find((u) => u.email === email);
@@ -32,7 +37,7 @@ async function createUser(data) {
 async function linkProvider(userId, provider, providerId) {
     const user = users.find((u) => u.id === userId);
     if (!user)
-        return;
+        throw new Error(`User Not Found:,${userId}`);
     const alreadyLinked = user.providers.some((p) => p.provider === provider);
     if (!alreadyLinked) {
         user.providers.push({ provider, providerId });

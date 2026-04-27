@@ -1,6 +1,6 @@
 import Redis from "ioredis";
-import { createAuthenik8 } from "../createAuthenik8";
-import { createRedisTestHelper, RedisTestHelper } from "./helpers/redisTestHelper";
+import { createAuthenik8 } from "../../createAuthenik8";
+import { createRedisTestHelper, RedisTestHelper } from "../helpers/redisTestHelper";
 
 describe("OAuth identity issuance", () => {
   let redisHelper: RedisTestHelper;

@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.initializeRedisClient = exports.setupRedis = void 0;
+exports.getRedisConfig = exports.validateRedisConfig = exports.initializeRedisClient = exports.setupRedis = void 0;
 const dotenv_1 = __importDefault(require("dotenv"));
 const connect_redis_1 = require("connect-redis");
 const ioredis_1 = __importDefault(require("ioredis"));
@@ -28,6 +28,7 @@ const validateRedisConfig = (config) => {
         throw new Error("Redis URL must use 'redis://' protocol");
     }
 };
+exports.validateRedisConfig = validateRedisConfig;
 const getRedisConfig = (options) => {
     const port = options?.port ?
         Number(options.port) :
@@ -43,6 +44,7 @@ const getRedisConfig = (options) => {
     validateRedisConfig(config);
     return config;
 };
+exports.getRedisConfig = getRedisConfig;
 const setupRedis = async (options) => {
     try {
         const config = getRedisConfig(options?.redisConfig);

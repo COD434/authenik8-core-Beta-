@@ -5,7 +5,7 @@ import {Request, Response, NextFunction} from "express"
 dotenv.config()
 
 
-class TokenBucket{
+export class TokenBucket{
 private redis: RedisClient
 
 
@@ -74,7 +74,7 @@ throw error;
 return tokenBucketPromise;
 };
 
-const createRatelimiter = (config:{
+export const createRatelimiter = (config:{
 capacity:number;
 refillRate: number;
 keyGenerator: (req:Request)=> string;

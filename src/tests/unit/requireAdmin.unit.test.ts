@@ -1,7 +1,7 @@
 import express from "express";
 import request from "supertest";
 import jwt from "jsonwebtoken";
-import { requireAdmin } from "../middleware/adminService";
+import { requireAdmin } from "../../middleware/adminService";
 
 describe("requireAdmin", () => {
   const jwtSecret = "admin-unit-secret";

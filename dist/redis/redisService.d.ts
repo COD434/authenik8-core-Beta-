@@ -16,11 +16,13 @@ interface SetupRedisOptions {
     redisConfig?: Partial<RedisConfig>;
     storeOptions?: Partial<RedisStoreOptions>;
 }
+declare const validateRedisConfig: (config: RedisConfig) => void;
+declare const getRedisConfig: (options?: Partial<RedisConfig>) => RedisConfig;
 declare const setupRedis: (options?: SetupRedisOptions) => Promise<{
     redisClient: Redis;
     redisStore: RedisStore;
 }>;
 declare const initializeRedisClient: () => Promise<Redis>;
-export { setupRedis, initializeRedisClient };
+export { setupRedis, initializeRedisClient, validateRedisConfig, getRedisConfig };
 export type { RedisConfig, RedisStoreOptions, SetupRedisOptions };
 //# sourceMappingURL=redisService.d.ts.map

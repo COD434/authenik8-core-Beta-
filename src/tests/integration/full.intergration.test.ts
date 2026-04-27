@@ -1,5 +1,8 @@
-import { createTestApp } from "./testApp";
+import { createTestApp } from "../tests/testApp";
 
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { createAuthenik8 } from '../../createAuthenik8';
+import { Authenik8Config } from '../../types/config';
 describe("Authenik8 Full Integration", () => {
   let request: any;
   let redisHelper: any;
@@ -81,4 +84,5 @@ describe("Authenik8 Full Integration", () => {
 
     expect(validRes.status).toBe(200);
   });
+
 });

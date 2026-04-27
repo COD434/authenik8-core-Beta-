@@ -133,5 +133,5 @@ redisClientInstance= redisClient;
 return redisClientInstance
 };
 
-export {setupRedis, initializeRedisClient};
+export {setupRedis, initializeRedisClient,validateRedisConfig, getRedisConfig};
 export type {RedisConfig, RedisStoreOptions, SetupRedisOptions}

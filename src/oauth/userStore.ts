@@ -1,13 +1,16 @@
 import crypto from "crypto";
 import { OAuthProfile } from "./types";
 
-
+export const resetStore = () => {
+  users.splice(0)
+};
 export type Provider = "google" | "github";
 
 export type User = {
   id: string;
   email: string;
   role?:string;
+
   providers: {
     provider: Provider;
     providerId: string;
@@ -56,10 +59,9 @@ export async function linkProvider(
   userId: string,
   provider: Provider,
   providerId: string
-): Promise<void> {
+) {
   const user = users.find((u) => u.id === userId);
-
-  if (!user) return;
+  if (!user) throw new Error(`User Not Found:,${userId}`)
 
   const alreadyLinked = user.providers.some(
     (p) => p.provider === provider

@@ -1,4 +1,4 @@
-import { SecurityModule } from "../security/ipService";
+import { SecurityModule } from "../../security/ipService";
 
 type FakeRedis = {
   sets: Map<string, Set<string>>;

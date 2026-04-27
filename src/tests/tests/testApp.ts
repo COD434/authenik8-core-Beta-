@@ -1,7 +1,7 @@
 import express from "express";
 import request from "supertest";
-import { createAuthenik8 } from "../createAuthenik8";
-import { createRedisTestHelper } from "./helpers/redisTestHelper";
+import { createAuthenik8 } from "../../createAuthenik8";
+import { createRedisTestHelper } from "../helpers/redisTestHelper";
 
 export const createTestApp = async () => {
   const redisHelper = await createRedisTestHelper("full-integration");

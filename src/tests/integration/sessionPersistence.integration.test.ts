@@ -1,5 +1,5 @@
-import { createAuthenik8 } from "../createAuthenik8";
-import { createRedisTestHelper, RedisTestHelper } from "./helpers/redisTestHelper";
+import { createAuthenik8 } from "../../createAuthenik8";
+import { createRedisTestHelper, RedisTestHelper } from "../helpers/redisTestHelper";
 
 const waitForValue = async (
   lookup: () => Promise<string | null>,

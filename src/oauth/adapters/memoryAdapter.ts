@@ -11,7 +11,7 @@ type User = {
   providers: Provider[];
 };
 
-// 🔥 SINGLE SOURCE OF TRUTH (REAL MEMORY STORE)
+
 const users = new Map<string, User>();
 
 export const memoryAdapter = {
@@ -54,15 +54,23 @@ export const memoryAdapter = {
     provider: string,
     providerId: string
   ) {
+
     const user = users.get(userId);
-
-    if (!user) {
+ 
+    if (!user) 
       throw new Error(`User not found: ${userId}`);
-    }
 
+
+    const alreadyLinked = user.providers.some(
+    (p) => p.provider === provider && p.providerId === providerId
+  );
+
+  if (!alreadyLinked) {
     user.providers.push({ provider, providerId });
     users.set(userId, user);
-  },
+  }
+     },
+  
 
   reset() {
     users.clear();

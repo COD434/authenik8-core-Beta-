@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.LoginLimiterMiddleware = exports.OTPLimiterMiddleware = exports.initializeRateLimiter = void 0;
+exports.LoginLimiterMiddleware = exports.OTPLimiterMiddleware = exports.createRatelimiter = exports.initializeRateLimiter = exports.TokenBucket = void 0;
 const dotenv_1 = __importDefault(require("dotenv"));
 const redisService_1 = require("../redis/redisService");
 dotenv_1.default.config();
@@ -39,6 +39,7 @@ class TokenBucket {
         return { allowed: true, remaining: Math.floor(newToken - 1) };
     }
 }
+exports.TokenBucket = TokenBucket;
 let tokenBucket;
 let tokenBucketPromise = null;
 const initializeRateLimiter = async () => {
@@ -89,6 +90,7 @@ const createRatelimiter = (config) => {
         }
     };
 };
+exports.createRatelimiter = createRatelimiter;
 const RATE_LIMIT_CONFIGS = {
     OTP: {
         keyPrefix: "otp_limiter",
@@ -106,7 +108,7 @@ const RATE_LIMIT_CONFIGS = {
         keyGenerator: (req) => req.ip || "unknown"
     }
 };
-exports.OTPLimiterMiddleware = createRatelimiter(RATE_LIMIT_CONFIGS.OTP);
-const LoginLimiterMiddleware = () => createRatelimiter(RATE_LIMIT_CONFIGS.LOGIN);
+exports.OTPLimiterMiddleware = (0, exports.createRatelimiter)(RATE_LIMIT_CONFIGS.OTP);
+const LoginLimiterMiddleware = () => (0, exports.createRatelimiter)(RATE_LIMIT_CONFIGS.LOGIN);
 exports.LoginLimiterMiddleware = LoginLimiterMiddleware;
 //# sourceMappingURL=limiter.js.map
