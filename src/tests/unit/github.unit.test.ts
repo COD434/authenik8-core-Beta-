@@ -39,15 +39,18 @@ function makeStoredState(overrides = {}) {
   return JSON.stringify({ userId: null, mode: 'login', ...overrides });
 }
 
-function mockFetchSequence(...responses: Array<{ ok?: boolean; json: any }>) {
+function mockFetchSequence(...responses: Array<{ ok?: boolean; text?:string; json: any }>) {
   let call = 0;
   vi.stubGlobal(
     'fetch',
     vi.fn(async () => {
       const r = responses[call++];
+      if (!r) throw new Error('mockFetchSequence: unexpected fetch call');
       return {
         ok: r.ok ?? true,
-        json: async () => r.json,
+	text: async () => r.text ?? '',
+        json: async () => r.json ?? {}
+		
       };
     })
   );

@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { resolveIdentity } from '../../oauth/brain/identityResolver';
 import { identityPolicy } from '../../oauth/brain/identityPolicy';
-
+import type { Provider } from '../../oauth/userStore';
+import type { OAuthProfile } from '../../oauth/types';
 
 vi.mock('../../oauth/userStore', () => ({
   findUserByEmail: vi.fn(),
@@ -20,13 +21,14 @@ import {
 const mockUser = {
   id: 'user-123',
   email: 'test@example.com',
-  providers: [{ provider: 'google', providerId: 'google-456' }],
+  providers: [{ provider: 'google' as Provider, providerId: 'google-456' }],
 };
 
-const mockProfile = {
+const mockProfile:OAuthProfile = {
   email: 'test@example.com',
   provider: 'google',
   providerId: 'google-456',
+  email_verified: true,
 };
 
 beforeEach(() => {
@@ -53,8 +55,8 @@ describe('resolveIdentity', () => {
   describe('when no existing user is found', () => {
     it('creates and returns a new user', async () => {
       const newUser = { ...mockUser, id: 'user-new' };
-      vi.mocked(findUserByProvider).mockResolvedValue(null);
-      vi.mocked(findUserByEmail).mockResolvedValue(null);
+      vi.mocked(findUserByProvider).mockResolvedValue(undefined);
+      vi.mocked(findUserByEmail).mockResolvedValue(undefined);
       vi.mocked(createUser).mockResolvedValue(newUser);
 
       const result = await resolveIdentity(mockProfile);
@@ -68,8 +70,8 @@ describe('resolveIdentity', () => {
     });
 
     it('does not call linkProvider when creating a new user', async () => {
-      vi.mocked(findUserByProvider).mockResolvedValue(null);
-      vi.mocked(findUserByEmail).mockResolvedValue(null);
+      vi.mocked(findUserByProvider).mockResolvedValue(undefined);
+      vi.mocked(findUserByEmail).mockResolvedValue(undefined);
       vi.mocked(createUser).mockResolvedValue(mockUser);
 
       await resolveIdentity(mockProfile);
@@ -81,7 +83,7 @@ describe('resolveIdentity', () => {
   
   describe('when user exists by email and auto-link is enabled', () => {
     beforeEach(() => {
-      vi.mocked(findUserByProvider).mockResolvedValue(null);
+      vi.mocked(findUserByProvider).mockResolvedValue(undefined);
       vi.mocked(findUserByEmail).mockResolvedValue(mockUser);
       vi.mocked(linkProvider).mockResolvedValue(undefined);
       identityPolicy.autoLinkOnVerifiedEmailMatch = true;
@@ -103,7 +105,7 @@ describe('resolveIdentity', () => {
 
   describe('when user exists by email but auto-link is disabled', () => {
     beforeEach(() => {
-      vi.mocked(findUserByProvider).mockResolvedValue(null);
+      vi.mocked(findUserByProvider).mockResolvedValue(undefined);
       vi.mocked(findUserByEmail).mockResolvedValue(mockUser);
       identityPolicy.autoLinkOnVerifiedEmailMatch = false;
     });

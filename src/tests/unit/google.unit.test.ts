@@ -1,17 +1,27 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { createGoogleProvider } from '../../oauth/providers/google';
 import type { Request, Response } from 'express';
+import type { Provider } from '../../oauth/userStore';
+
+//vi.mock('google-auth-library', () => {
+  //const mockGetPayload = vi.fn();
+  //const mockVerifyIdToken = vi.fn().mockResolvedValue({ getPayload: mockGetPayload });
+  //const MockOAuth2Client = vi.fn(() => ({ verifyIdToken: mockVerifyIdToken }));
+  //return { OAuth2Client: MockOAuth2Client, mockGetPayload, mockVerifyIdToken };
+//});
+
+//import { mockGetPayload, mockVerifyIdToken } from 'google-auth-library';
 
 
-vi.mock('google-auth-library', () => {
+const { mockGetPayload, mockVerifyIdToken } = vi.hoisted(() => {
   const mockGetPayload = vi.fn();
   const mockVerifyIdToken = vi.fn().mockResolvedValue({ getPayload: mockGetPayload });
-  const MockOAuth2Client = vi.fn(() => ({ verifyIdToken: mockVerifyIdToken }));
-  return { OAuth2Client: MockOAuth2Client, mockGetPayload, mockVerifyIdToken };
+  return { mockGetPayload, mockVerifyIdToken };
 });
 
-import { mockGetPayload, mockVerifyIdToken } from 'google-auth-library';
-
+vi.mock('google-auth-library', () => ({
+  OAuth2Client: vi.fn(() => ({ verifyIdToken: mockVerifyIdToken })),
+}));
 const mockRedis = {
   setex: vi.fn().mockResolvedValue('OK'),
   get: vi.fn(),
@@ -61,6 +71,7 @@ function mockFetchSequence(...responses: Array<{ ok?: boolean; text?: string; js
     'fetch',
     vi.fn(async () => {
       const r = responses[call++];
+      if (!r) throw new Error('mockFetchSequence: unexpected fetch call');
       return {
         ok: r.ok ?? true,
         text: async () => r.text ?? '',
@@ -69,6 +80,14 @@ function mockFetchSequence(...responses: Array<{ ok?: boolean; text?: string; js
     })
   );
 }
+//let mockGetPayload: ReturnType<typeof vi.fn>;
+//let mockVerifyIdToken: ReturnType<typeof vi.fn>;
+
+//beforeAll(async () => {
+	//const mocks = (await import('google-auth-library')) as any;
+  //mockGetPayload = mocks.mockGetPayload;
+  //mockVerifyIdToken = mocks.mockVerifyIdToken;
+//});
 
 beforeEach(() => {
   vi.clearAllMocks();

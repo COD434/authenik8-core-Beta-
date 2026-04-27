@@ -43,6 +43,7 @@ import { createRedisIdentityAdapter } from '../../oauth/adapters/redisAdapter';
 import { JWTService } from '../../auth/jwtAuth';
 import { initializeRedisClient } from '../../redis/redisService';
 import { createAuthenik8 } from '../../createAuthenik8';
+import type { Provider } from '../../oauth/userStore';
 
 
 vi.mock('../../redis/redisService', () => ({
@@ -209,7 +210,7 @@ describe('issueTokens', () => {
 describe('issueTokensFromProfile', () => {
   const verifiedProfile = {
     email: 'test@example.com',
-    provider: 'google',
+    provider: 'google' as Provider,
     providerId: 'google-123',
     email_verified: true,
   };

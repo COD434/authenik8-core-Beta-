@@ -1,9 +1,9 @@
 import dotenv from "dotenv";
 import express, { Request, Response, NextFunction } from "express";
-import { createAuthenik8 } from "../createAuthenik8";
-import { TokenPayload } from "../types/tokens";
-import { createIdentityEngine } from "../oauth/brain/identityEngine";
-import { memoryAdapter } from "../oauth/adapters/memoryAdapter";
+import { createAuthenik8 } from "../../createAuthenik8";
+import { TokenPayload } from "../../types/tokens";
+import { createIdentityEngine } from "../../oauth/brain/identityEngine";
+import { memoryAdapter } from "../../oauth/adapters/memoryAdapter";
 
 const tokenService = {
   signAccessToken: () => "test_access_token",

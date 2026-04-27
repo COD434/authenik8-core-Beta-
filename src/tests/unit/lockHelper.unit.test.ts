@@ -88,7 +88,7 @@ describe('RedisLock', () => {
     it('passes the correct number of keys (1) to eval', async () => {
       await lock.release('my-lock', 'lock-value-xyz');
 
-      const [, numKeys] = mockRedis.eval.mock.calls[0];
+      const [, numKeys] = mockRedis.eval.mock.calls[0]!;
       expect(numKeys).toBe(1);
     });
 

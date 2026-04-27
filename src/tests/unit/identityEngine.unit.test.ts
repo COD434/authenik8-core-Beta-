@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { createIdentityEngine } from '../../oauth/brain/identityEngine';
 import { identityPolicy } from '../../oauth/brain/identityPolicy';
-
+import type { Provider } from '../../oauth/userStore';
 
 const mockAdapter = {
   findUserByEmail: vi.fn(),
@@ -23,7 +23,7 @@ const mockUser = {
 
 const baseProfile = {
   email: 'test@example.com',
-  provider: 'google',
+  provider: 'google' as Provider,
   providerId: 'google-456',
   email_verified: true,
 };

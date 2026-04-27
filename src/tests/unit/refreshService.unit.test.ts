@@ -36,7 +36,7 @@ describe('RefreshService', () => {
       get: vi.fn(),
       set: vi.fn(),
       getset: vi.fn(),
-    };
+    } ;
 
     redisClient = {
       set: vi.fn().mockResolvedValue('OK'),
@@ -114,12 +114,12 @@ describe('RefreshService', () => {
     });
 
     it('throws InvalidTokenError when stored token does not match', async () => {
-      tokenStore.get.mockResolvedValue('different.token');
+      vi.mocked(tokenStore.get).mockResolvedValue('different.token');
       await expect(service.refresh(mockRefreshToken)).rejects.toThrow(InvalidTokenError);
     });
 
     it('successfully refreshes token (no rotation)', async () => {
-      tokenStore.get.mockResolvedValue(mockRefreshToken);
+      vi.mocked(tokenStore.get).mockResolvedValue(mockRefreshToken);
 
       const result = await service.refresh(mockRefreshToken);
 
@@ -138,8 +138,8 @@ describe('RefreshService', () => {
       const rotatingOptions = { ...options, rotateRefreshTokens: true };
       const rotatingService = new RefreshService(rotatingOptions);
 
-      tokenStore.get.mockResolvedValue(mockRefreshToken);
-      tokenStore.getset.mockResolvedValue(mockRefreshToken);
+      vi.mocked(tokenStore.get).mockResolvedValue(mockRefreshToken);
+      vi.mocked(tokenStore.getset).mockResolvedValue(mockRefreshToken);
       (jwt.sign as any).mockReturnValueOnce(mockAccessToken).mockReturnValueOnce(mockNewRefreshToken);
 
       const result = await rotatingService.refresh(mockRefreshToken);
@@ -157,14 +157,14 @@ describe('RefreshService', () => {
       const rotatingOptions = { ...options, rotateRefreshTokens: true };
       const rotatingService = new RefreshService(rotatingOptions);
 
-      tokenStore.get.mockResolvedValue(mockRefreshToken);
-      tokenStore.getset.mockResolvedValue('some-other-token'); // concurrent change
+      vi.mocked(tokenStore.get).mockResolvedValue(mockRefreshToken);
+      vi.mocked(tokenStore.getset).mockResolvedValue('some-other-token'); // concurrent change
 
       await expect(rotatingService.refresh(mockRefreshToken)).rejects.toThrow(InvalidTokenError);
     });
 
     it('releases lock in finally block even when an error occurs', async () => {
-      tokenStore.get.mockRejectedValue(new Error('redis boom'));
+      vi.mocked(tokenStore.get).mockRejectedValue(new Error('redis boom'));
       mockLockInstance.acquire.mockResolvedValue('lock-value-xyz');
 
       await expect(service.refresh(mockRefreshToken)).rejects.toThrow();

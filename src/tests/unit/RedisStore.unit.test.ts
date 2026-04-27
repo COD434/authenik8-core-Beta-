@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { RedisTokenStore } from '../../storage/RedisTokenStore';
 
-// ====================== MOCKS ======================
+
 const mockRedis = {
   set: vi.fn().mockResolvedValue('OK'),
   get: vi.fn().mockResolvedValue(null),
@@ -193,7 +193,7 @@ describe('whitelist', () => {
 
 describe('set', () => {
   it('calls redis.set with EX when expiry is provided', async () => {
-    const store = makeStore();
+const store = makeStore();
     await store.set('custom-key', 'val', 120);
 
     expect(mockRedis.set).toHaveBeenCalledWith('custom-key', 'val', 'EX', 120);
@@ -239,8 +239,8 @@ describe('debug logging', () => {
     const store = makeStore(true);
     await store.storeRefreshToken('tok', 'user-1', 3600);
 
-    const logArg = spy.mock.calls[0][1];
-    expect(logArg.value).toBe('<redacted>');
+    const logArg = spy.mock.calls[0]?.[1];
+    expect(logArg?.value).toBe('<redacted>');
     spy.mockRestore();
   });
 

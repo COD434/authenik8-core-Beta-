@@ -1,8 +1,8 @@
 import dotenv from "dotenv";
 import express from "express";
-import { createAuthenik8 } from "../createAuthenik8";
-import { createIdentityEngine } from "../oauth/brain/identityEngine";
-import { memoryAdapter } from "../oauth/adapters/memoryAdapter";
+import { createAuthenik8 } from "../../createAuthenik8";
+import { createIdentityEngine } from "../../oauth/brain/identityEngine";
+import { memoryAdapter } from "../../oauth/adapters/memoryAdapter";
 
 dotenv.config();
 

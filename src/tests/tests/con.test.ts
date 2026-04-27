@@ -1,7 +1,7 @@
-import { createAuthenik8 } from "../createAuthenik8";
+import { createAuthenik8 } from "../../createAuthenik8";
 import request from "supertest";
 import express from "express";
-import { createRedisTestHelper, RedisTestHelper } from "./helpers/redisTestHelper";
+import { createRedisTestHelper, RedisTestHelper } from "../helpers/redisTestHelper";
 
 describe("Refresh Token Concurrency (Integration)", () => {
   let app: express.Express;
