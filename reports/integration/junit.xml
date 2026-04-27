@@ -1,25 +1,74 @@
 <?xml version="1.0" encoding="UTF-8" ?>
-<testsuites name="vitest tests" tests="8" failures="0" errors="0" time="0.555415077">
-    <testsuite name="src/tests/integration/full.intergration.test.ts" timestamp="2026-04-27T13:28:25.342Z" hostname="localhost" tests="5" failures="0" errors="0" skipped="0" time="0.328363692">
-        <testcase classname="src/tests/integration/full.intergration.test.ts" name="Authenik8 Full Integration &gt; should login and receive tokens" time="0.088702385">
+<testsuites name="vitest tests" tests="11" failures="3" errors="0" time="0.127518231">
+    <testsuite name="src/tests/integration/full.intergration.test.ts" timestamp="2026-04-27T14:28:27.358Z" hostname="localhost" tests="6" failures="1" errors="0" skipped="5" time="0.033192616">
+        <testcase classname="src/tests/integration/full.intergration.test.ts" name="Authenik8 Full Integration &gt; should login and receive tokens" time="0">
+            <skipped/>
         </testcase>
-        <testcase classname="src/tests/integration/full.intergration.test.ts" name="Authenik8 Full Integration &gt; should access protected route with valid token" time="0.018971615">
+        <testcase classname="src/tests/integration/full.intergration.test.ts" name="Authenik8 Full Integration &gt; should access protected route with valid token" time="0">
+            <skipped/>
         </testcase>
-        <testcase classname="src/tests/integration/full.intergration.test.ts" name="Authenik8 Full Integration &gt; should reject request without token" time="0.01027023">
+        <testcase classname="src/tests/integration/full.intergration.test.ts" name="Authenik8 Full Integration &gt; should reject request without token" time="0">
+            <skipped/>
         </testcase>
-        <testcase classname="src/tests/integration/full.intergration.test.ts" name="Authenik8 Full Integration &gt; should refresh access token" time="0.070320615">
+        <testcase classname="src/tests/integration/full.intergration.test.ts" name="Authenik8 Full Integration &gt; should refresh access token" time="0">
+            <skipped/>
         </testcase>
-        <testcase classname="src/tests/integration/full.intergration.test.ts" name="Authenik8 Full Integration &gt; should NOT allow reuse of old refresh token" time="0.063353461">
+        <testcase classname="src/tests/integration/full.intergration.test.ts" name="Authenik8 Full Integration &gt; should NOT allow reuse of old refresh token" time="0">
+            <skipped/>
+        </testcase>
+        <testcase classname="src/tests/integration/full.intergration.test.ts" name="Authenik8 Full Integration" time="0.030980615">
+            <system-err>
+[ioredis] Unhandled error event: Error: connect ECONNREFUSED 127.0.0.1:6379
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1611:16)
+
+            </system-err>
+            <failure message="Connection is closed." type="Error">
+Error: Connection is closed.
+ ❯ EventEmitter.connectionCloseHandler node_modules/ioredis/built/Redis.js:208:28
+            </failure>
         </testcase>
     </testsuite>
-    <testsuite name="src/tests/integration/oauthIdentity.integration.test.ts" timestamp="2026-04-27T13:28:25.359Z" hostname="localhost" tests="2" failures="0" errors="0" skipped="0" time="0.147145539">
-        <testcase classname="src/tests/integration/oauthIdentity.integration.test.ts" name="OAuth identity issuance &gt; issues tokens against a stable internal user id across auth instances" time="0.065363384">
+    <testsuite name="src/tests/integration/oauthIdentity.integration.test.ts" timestamp="2026-04-27T14:28:27.384Z" hostname="localhost" tests="3" failures="1" errors="0" skipped="2" time="0.045562461">
+        <testcase classname="src/tests/integration/oauthIdentity.integration.test.ts" name="OAuth identity issuance &gt; issues tokens against a stable internal user id across auth instances" time="0">
+            <skipped/>
         </testcase>
-        <testcase classname="src/tests/integration/oauthIdentity.integration.test.ts" name="OAuth identity issuance &gt; rejects unverified OAuth profiles" time="0.005676384">
+        <testcase classname="src/tests/integration/oauthIdentity.integration.test.ts" name="OAuth identity issuance &gt; rejects unverified OAuth profiles" time="0">
+            <skipped/>
+        </testcase>
+        <testcase classname="src/tests/integration/oauthIdentity.integration.test.ts" name="OAuth identity issuance" time="0.043263462">
+            <system-err>
+[ioredis] Unhandled error event: Error: connect ECONNREFUSED 127.0.0.1:6379
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1611:16)
+
+            </system-err>
+            <failure message="Connection is closed." type="Error">
+Error: Connection is closed.
+ ❯ EventEmitter.connectionCloseHandler node_modules/ioredis/built/Redis.js:208:28
+            </failure>
+            <failure message="Cannot read properties of undefined (reading &apos;quit&apos;)" type="TypeError">
+TypeError: Cannot read properties of undefined (reading &apos;quit&apos;)
+ ❯ src/tests/integration/oauthIdentity.integration.test.ts:16:26
+            </failure>
         </testcase>
     </testsuite>
-    <testsuite name="src/tests/integration/sessionPersistence.integration.test.ts" timestamp="2026-04-27T13:28:25.364Z" hostname="localhost" tests="1" failures="0" errors="0" skipped="0" time="0.079905846">
-        <testcase classname="src/tests/integration/sessionPersistence.integration.test.ts" name="session persistence &gt; signToken persists the active access token session" time="0.026638769">
+    <testsuite name="src/tests/integration/sessionPersistence.integration.test.ts" timestamp="2026-04-27T14:28:27.400Z" hostname="localhost" tests="2" failures="1" errors="0" skipped="1" time="0.048763154">
+        <testcase classname="src/tests/integration/sessionPersistence.integration.test.ts" name="session persistence &gt; signToken persists the active access token session" time="0">
+            <skipped/>
+        </testcase>
+        <testcase classname="src/tests/integration/sessionPersistence.integration.test.ts" name="session persistence" time="0.044073538">
+            <system-err>
+[ioredis] Unhandled error event: Error: connect ECONNREFUSED 127.0.0.1:6379
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1611:16)
+
+            </system-err>
+            <failure message="Connection is closed." type="Error">
+Error: Connection is closed.
+ ❯ EventEmitter.connectionCloseHandler node_modules/ioredis/built/Redis.js:208:28
+            </failure>
+            <failure message="Cannot read properties of undefined (reading &apos;close&apos;)" type="TypeError">
+TypeError: Cannot read properties of undefined (reading &apos;close&apos;)
+ ❯ src/tests/integration/sessionPersistence.integration.test.ts:30:23
+            </failure>
         </testcase>
     </testsuite>
 </testsuites>

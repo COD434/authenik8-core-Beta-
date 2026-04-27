@@ -83,10 +83,17 @@ describe('validateRedisConfig', () => {
 
 describe('getRedisConfig', () => {
   it('returns defaults when no options provided', () => {
+    const originalHost = process.env.REDIS_HOST;
+    const originalPort = process.env.REDIS_PORT
+    
     const config = getRedisConfig();
     expect(config.host).toBe('127.0.0.1');
     expect(config.port).toBe(6379);
     expect(config.connectTimeout).toBe(5000);
+
+    if (originalHost !== undefined) process.env.REDIS_HOST = originalHost;
+    if (originalPort !== undefined) process.env.REDIS_PORT = originalPort;
+
   });
 
   it('overrides host and port from options', () => {
