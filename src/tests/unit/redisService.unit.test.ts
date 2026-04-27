@@ -11,10 +11,10 @@ vi.mock('connect-redis', () => ({
 let currentMockRedis: ReturnType<typeof makeMockRedis>;
 
 function makeMockRedis(behavior: 'ready' | 'error' = 'ready') {
-  const handlers: Record<string, Function[]> = {};
+  const handlers: Record<string,((...args:unknown[])=> void)[]> = {};
 
   const instance = {
-    once: vi.fn((event: string, cb: Function) => {
+    once: vi.fn((event: string, cb:(...args: unknown[]) => void)  => {
       if (!handlers[event]) handlers[event] = [];
       handlers[event].push(cb);
 
