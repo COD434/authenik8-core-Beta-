@@ -22,7 +22,7 @@ type IdentityAdapter = {
 
 
 type TokenService = {
-  signAccessToken(payload: any): string;
+  signAccessToken(payload: any):Promise<string> | string;
   generateRefreshToken(payload: any): Promise<string>;
 };
 
@@ -58,7 +58,7 @@ if (!ctx.email) {
 	        return {
 		type:"EXISTING_PROVIDER_LOGIN",
 	          user: existingProvider,
-accessToken:tokenService.signAccessToken(payload),
+accessToken:await tokenService.signAccessToken(payload),
 refreshToken: await tokenService.generateRefreshToken(payload),
         };
       }
@@ -129,7 +129,7 @@ if(!canAutoLink){
 	  return {
 	    type: "EXISTING_PROVIDER_LOGIN",
 	    user: existingUser,
-	    accessToken: tokenService.signAccessToken(oauthPayload),
+	    accessToken: await tokenService.signAccessToken(oauthPayload),
 	    refreshToken: await tokenService.generateRefreshToken(oauthPayload),
 	  };
 
@@ -159,7 +159,7 @@ auditLogs.push({
       return {
 	      type:"NEW_USER_CREATION",
         user,
-        accessToken:tokenService.signAccessToken(payload),
+        accessToken: await tokenService.signAccessToken(payload),
 	refreshToken:await tokenService.generateRefreshToken(payload)
       };
     },

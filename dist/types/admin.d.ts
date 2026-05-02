@@ -1,6 +1,6 @@
 import { Redis } from "ioredis";
 export interface RequireAdminOptions {
     jwtSecret: string;
-    redis?: Redis;
+    redisclient: Redis;
 }
 //# sourceMappingURL=admin.d.ts.map

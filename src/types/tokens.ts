@@ -5,6 +5,6 @@ export type TokenPayload = {
 }
 
 export type TokenPair = {
-  accessToken: string;
+  accessToken: Promise<string> | string;
   refreshToken: string;
 };

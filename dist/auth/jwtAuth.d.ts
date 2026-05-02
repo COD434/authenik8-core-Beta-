@@ -19,11 +19,17 @@ export declare class JWTService {
     private redisclient?;
     private onGuestToken?;
     constructor(options: JWTOptions);
+    listSessions(userId: string): Promise<any[]>;
+    revokeAllSessions(userId: string): Promise<void>;
+    revokeSession(userId: string, sessionId: string): Promise<void>;
     private persistSessionToken;
-    signToken(payload: object): string;
+    signToken(payload: object, meta?: {
+        device?: string;
+        ip?: string;
+    }): Promise<string>;
     guestToken(): string;
     verifyToken(token: string): JwtPayload | null;
-    authenticateJWT: (req: Request, res: Response, next: NextFunction) => Promise<Response<any, Record<string, any>> | undefined>;
+    authenticateJWT: (req: Request, res: Response, next: NextFunction) => Promise<void | Response<any, Record<string, any>>>;
 }
 export {};
 //# sourceMappingURL=jwtAuth.d.ts.map

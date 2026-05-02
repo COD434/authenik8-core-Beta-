@@ -26,7 +26,7 @@ function createIdentityEngine(adapter, tokenService) {
                 return {
                     type: "EXISTING_PROVIDER_LOGIN",
                     user: existingProvider,
-                    accessToken: tokenService.signAccessToken(payload),
+                    accessToken: await tokenService.signAccessToken(payload),
                     refreshToken: await tokenService.generateRefreshToken(payload),
                 };
             }
@@ -80,7 +80,7 @@ function createIdentityEngine(adapter, tokenService) {
                 return {
                     type: "EXISTING_PROVIDER_LOGIN",
                     user: existingUser,
-                    accessToken: tokenService.signAccessToken(oauthPayload),
+                    accessToken: await tokenService.signAccessToken(oauthPayload),
                     refreshToken: await tokenService.generateRefreshToken(oauthPayload),
                 };
             }
@@ -105,7 +105,7 @@ function createIdentityEngine(adapter, tokenService) {
             return {
                 type: "NEW_USER_CREATION",
                 user,
-                accessToken: tokenService.signAccessToken(payload),
+                accessToken: await tokenService.signAccessToken(payload),
                 refreshToken: await tokenService.generateRefreshToken(payload)
             };
         },

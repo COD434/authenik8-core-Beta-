@@ -24,6 +24,23 @@ const requireAdmin = (options) => {
             if (decoded.role !== "admin") {
                 return res.status(403).json({ error: "Forbidden: Admin only" });
             }
+            if (options.redisclient) {
+                req.adminActions = {
+                    listSessions: async (userId) => {
+                        const sessions = await options.redisclient.hgetall(`sessions:${userId}`);
+                        return Object.values(sessions || {}).map((s) => {
+                            const { token, ...meta } = JSON.parse(s);
+                            return meta;
+                        });
+                    },
+                    revokeSession: async (userId, sessionId) => {
+                        await options.redisclient.hdel(`sessions:${userId}`, sessionId);
+                    },
+                    revokeAllSessions: async (userId) => {
+                        await options.redisclient.del(`sessions:${userId}`);
+                    },
+                };
+            }
             req.user = decoded;
             return next();
         }

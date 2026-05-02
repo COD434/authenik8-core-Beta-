@@ -44,8 +44,8 @@ describe("OAuth identity issuance", () => {
       email_verified: true,
     });
 
-    const firstPayload = authA.verifyToken(firstTokens.accessToken);
-    const secondPayload = authB.verifyToken(secondTokens.accessToken);
+    const firstPayload = authA.verifyToken(await firstTokens.accessToken);
+    const secondPayload = authB.verifyToken(await secondTokens.accessToken);
 
     expect(firstPayload?.userId).toBeDefined();
     expect(firstPayload?.userId).not.toBe(providerId);

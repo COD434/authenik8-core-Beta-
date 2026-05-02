@@ -24,6 +24,7 @@ if(authHeader && authHeader.startsWith("Bearer")){
 	token=authHeader.split(" ")[1];
 
 }
+
 if (!token && cookieToken){
 token = cookieToken
 }
@@ -36,7 +37,27 @@ token = cookieToken
 	        if(decoded.role !== "admin"){
 	        return res.status(403).json({error:"Forbidden: Admin only"})
 	        }
-		(req as any).user =decoded;
+	
+
+		if (options.redisclient) {
+        (req as any).adminActions = {
+          listSessions: async (userId: string) => {
+            const sessions = await options.redisclient.hgetall(`sessions:${userId}`);
+            return Object.values(sessions || {}).map((s: any) => {
+              const { token, ...meta } = JSON.parse(s);
+              return meta;
+            });
+          },
+          revokeSession: async (userId: string, sessionId: string) => {
+            await options.redisclient.hdel(`sessions:${userId}`, sessionId);
+          },
+          revokeAllSessions: async (userId: string) => {
+            await options.redisclient.del(`sessions:${userId}`);
+          },
+        };
+      }
+	(req as any).user =decoded;
+
 		return next();
 		}catch{
 		return res.status(401).json({error:"Invalid or expired token"})

@@ -4,7 +4,7 @@ export type TokenPayload = {
     userId: string;
 };
 export type TokenPair = {
-    accessToken: string;
+    accessToken: Promise<string> | string;
     refreshToken: string;
 };
 //# sourceMappingURL=tokens.d.ts.map

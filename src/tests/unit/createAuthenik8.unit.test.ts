@@ -102,7 +102,7 @@ describe('createAuthenik8', () => {
     const instance = await createAuthenik8(baseConfig);
 
     expect(instance).toMatchObject({
-      redis: expect.anything(),
+      redisclient: expect.anything(),
       signToken: expect.any(Function),
       verifyToken: expect.any(Function),
       guestToken: expect.any(Function),

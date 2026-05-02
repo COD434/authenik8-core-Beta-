@@ -29,7 +29,7 @@ const createAuthenik8 = async (config) => {
         redisClient: redisClient
     });
     const issueTokens = async (payload) => {
-        const accessToken = jwtService.signToken(payload);
+        const accessToken = await jwtService.signToken(payload);
         const refreshToken = await refreshService.generateRefreshToken({
             userId: payload.userId,
             email: payload.email,
@@ -40,16 +40,10 @@ const createAuthenik8 = async (config) => {
         };
     };
     const tokenService = {
-        signAccessToken: jwtService.signToken.bind(jwtService),
+        signAccessToken: await jwtService.signToken.bind(jwtService),
         generateRefreshToken: refreshService.generateRefreshToken.bind(refreshService),
     };
-    // =========================
-    // 5. Identity Engine (NO circular deps)
-    // =========================
     const identityEngine = (0, identityEngine_1.createIdentityEngine)(config.identityAdapter ?? (0, redisAdapter_1.createRedisIdentityAdapter)(redisClient), tokenService);
-    // =========================
-    // 6. OAuth (depends on identity engine)
-    // =========================
     const oauth = config.oauth
         ? (0, core_1.createOAuth)({
             ...config.oauth,
@@ -57,7 +51,6 @@ const createAuthenik8 = async (config) => {
             identityEngine,
         })
         : undefined;
-    // ===============
     const issueTokensFromProfile = async (profile) => {
         if (!isVerifiedOAuthEmail(profile.email_verified)) {
             throw new Error("OAuth profile email must be verified before issuing tokens");
@@ -88,7 +81,7 @@ const createAuthenik8 = async (config) => {
     });
     return {
         //auth
-        redis: redisClient,
+        redisclient: redisClient,
         signToken: jwtService.signToken.bind(jwtService),
         verifyToken: jwtService.verifyToken.bind(jwtService),
         guestToken: jwtService.guestToken.bind(jwtService),
@@ -105,7 +98,7 @@ const createAuthenik8 = async (config) => {
         listIPs: security.listIPs.bind(security),
         //middleware
         requireAdmin: (0, adminService_1.requireAdmin)({ jwtSecret: config.jwtSecret,
-            redis: redisClient
+            redisclient: redisClient
         }),
         incognito: (0, guestModeService_1.createIncognito)({
             jwtSecret: config.jwtSecret,

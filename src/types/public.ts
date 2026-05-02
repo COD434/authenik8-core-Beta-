@@ -19,7 +19,7 @@ type GoogleProvider = {
 
 
 export interface Authenik8Instance {
-  signToken: (payload: any) => string;
+  signToken: (payload: any) =>Promise<string>;
   verifyToken: (token: string) => any;
   guestToken: () => string;
 
@@ -37,7 +37,7 @@ export interface Authenik8Instance {
   requireAdmin: any;
   incognito: any;
 
-  redis?: any;
+  redisclient?: any;
   oauth?: {
     google?: GoogleProvider;
     github?: GitHubProvider;

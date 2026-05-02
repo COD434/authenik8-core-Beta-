@@ -10,7 +10,7 @@ type IdentityAdapter = {
     linkProvider(userId: string, provider: string, providerId: string): Promise<void>;
 };
 type TokenService = {
-    signAccessToken(payload: any): string;
+    signAccessToken(payload: any): Promise<string> | string;
     generateRefreshToken(payload: any): Promise<string>;
 };
 export declare function createIdentityEngine(adapter: IdentityAdapter, tokenService: TokenService): IdentityEngine;

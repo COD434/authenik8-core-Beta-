@@ -17,7 +17,7 @@ type GoogleProvider = {
     }>;
 };
 export interface Authenik8Instance {
-    signToken: (payload: any) => string;
+    signToken: (payload: any) => Promise<string>;
     verifyToken: (token: string) => any;
     guestToken: () => string;
     refreshToken: (token: string) => Promise<any>;
@@ -30,7 +30,7 @@ export interface Authenik8Instance {
     listIPs: () => Promise<string[]>;
     requireAdmin: any;
     incognito: any;
-    redis?: any;
+    redisclient?: any;
     oauth?: {
         google?: GoogleProvider;
         github?: GitHubProvider;

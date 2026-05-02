@@ -16,20 +16,22 @@ class JWTService {
             }
             try {
                 const decoded = jsonwebtoken_1.default.verify(token, this.jwtSecret);
+                console.log("Redis Client exists?", !!this.redisclient);
+                console.log("Decoded UserID:", decoded.userId);
+                console.log("Full key:", `sessions:${decoded.userId}`);
                 if (this.redisclient && decoded.userId) {
-                    const storedToken = await this.redisclient.get(`session:${decoded.userId}`);
-                    if (storedToken !== token) {
-                        return res
-                            .status(403)
-                            .json({ success: false, message: "invalid session", errors: [] });
+                    const sessions = await this.redisclient.hgetall(`sessions:${decoded.userId}`);
+                    console.log("HGETALL called!");
+                    const match = Object.values(sessions || {}).find((s) => JSON.parse(s).token === token);
+                    if (!match) {
+                        return res.status(403).json({ success: false, message: "invalid session", errors: [] });
                     }
                 }
                 req.user = decoded;
-                next();
+                return next();
             }
             catch {
-                return res.status(403)
-                    .json({ success: false, message: "invalid or expired token" });
+                return res.status(403).json({ success: false, message: "invalid or expired token" });
             }
         };
         this.jwtSecret = options.jwtSecret;
@@ -37,28 +39,52 @@ class JWTService {
         this.redisclient = options.redisClient;
         this.onGuestToken = options.onGuestToken;
     }
-    persistSessionToken(payload, token) {
-        if (!this.redisclient) {
-            return;
-        }
-        const userId = payload.userId;
-        if (!userId) {
-            return;
-        }
-        const decoded = jsonwebtoken_1.default.decode(token);
-        const now = Math.floor(Date.now() / 1000);
-        const ttl = decoded?.exp ? Math.max(decoded.exp - now, 1) : 3600;
-        void this.redisclient
-            .set(`session:${userId}`, token, "EX", ttl)
-            .catch((error) => {
-            console.error("Failed to persist session token:", error);
+    async listSessions(userId) {
+        if (!this.redisclient)
+            return [];
+        const sessions = await this.redisclient.hgetall(`sessions:${userId}`);
+        return Object.values(sessions || {}).map((s) => {
+            const { token, ...meta } = JSON.parse(s);
+            return meta;
         });
     }
-    signToken(payload) {
-        const token = jsonwebtoken_1.default.sign(payload, this.jwtSecret, {
+    async revokeAllSessions(userId) {
+        if (!this.redisclient)
+            return;
+        await this.redisclient.del(`sessions:${userId}`);
+    }
+    async revokeSession(userId, sessionId) {
+        await this.redisclient.hdel(`sessions:${userId}`, sessionId);
+    }
+    async persistSessionToken(payload, token, meta) {
+        if (!this.redisclient)
+            return;
+        const userId = payload.userId;
+        if (!userId)
+            return;
+        try {
+            const decoded = jsonwebtoken_1.default.decode(token);
+            const now = Math.floor(Date.now() / 1000);
+            const ttl = decoded?.exp ? Math.max(decoded.exp - now, 1) : 3600;
+            await this.redisclient.hset(`sessions:${userId}`, meta.sessionId, JSON.stringify({ token, ...meta }));
+            await this.redisclient.expire(`sessions:${userId}`, ttl);
+        }
+        catch (err) {
+            console.error('Failed to persist session token:', err);
+        }
+    }
+    async signToken(payload, meta) {
+        const sessionId = crypto_1.default.randomUUID();
+        const fullPayload = { ...payload, sessionId };
+        const token = jsonwebtoken_1.default.sign(fullPayload, this.jwtSecret, {
             expiresIn: this.expiry || "1h"
         });
-        this.persistSessionToken(payload, token);
+        this.persistSessionToken(payload, token, {
+            sessionId,
+            device: meta?.device || "unknown",
+            ip: meta?.ip || "unknown",
+            createdAt: Date.now()
+        });
         return token;
     }
     ;

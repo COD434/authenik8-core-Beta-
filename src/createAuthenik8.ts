@@ -45,7 +45,7 @@ const refreshService = new RefreshService({
 
 
 	const issueTokens = async (payload: TokenPayload): Promise<TokenPair> => {
-  const accessToken = jwtService.signToken(payload);
+  const accessToken = await jwtService.signToken(payload);
   
 
   const refreshToken = await refreshService.generateRefreshToken({
@@ -60,21 +60,17 @@ const refreshService = new RefreshService({
 };
 
   const tokenService = {
-    signAccessToken: jwtService.signToken.bind(jwtService),
+    signAccessToken: await jwtService.signToken.bind(jwtService),
     generateRefreshToken: refreshService.generateRefreshToken.bind(refreshService),
   };
 
-  // =========================
-  // 5. Identity Engine (NO circular deps)
-  // =========================
+
   const identityEngine = createIdentityEngine(
     config.identityAdapter ?? createRedisIdentityAdapter(redisClient),
     tokenService
   );
 
-  // =========================
-  // 6. OAuth (depends on identity engine)
-  // =========================
+  
   const oauth = config.oauth
     ? createOAuth({
         ...config.oauth,
@@ -83,7 +79,7 @@ const refreshService = new RefreshService({
       })
     : undefined;
 
-  // ===============
+  
 const issueTokensFromProfile = async (
   profile: OAuthProfile
 ): Promise<TokenPair> => {
@@ -123,7 +119,7 @@ const issueTokensFromProfile = async (
 	});
 return{
 	//auth
-	redis:redisClient,
+	redisclient:redisClient,
 	signToken:jwtService.signToken.bind(jwtService),
 	verifyToken:jwtService.verifyToken.bind(jwtService),
 	guestToken:jwtService.guestToken.bind(jwtService),
@@ -146,7 +142,7 @@ return{
 	//middleware
 requireAdmin :requireAdmin({ jwtSecret:
 	config.jwtSecret,
-			   redis:redisClient
+			   redisclient:redisClient
 }),
 incognito:createIncognito({
   jwtSecret: config.jwtSecret,
