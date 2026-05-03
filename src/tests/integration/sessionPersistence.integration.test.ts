@@ -2,9 +2,9 @@ import { createAuthenik8 } from "../../createAuthenik8";
 import { createRedisTestHelper, RedisTestHelper } from "../helpers/redisTestHelper";
 
 const waitForValue = async (
-  lookup: () => Promise<string | null>,
+  lookup: () => Promise<Record<string , string>>,
   timeoutMs = 1500
-): Promise<string | null> => {
+)=> {
   const deadline = Date.now() + timeoutMs;
 
   while (Date.now() < deadline) {
@@ -37,16 +37,20 @@ describe("session persistence", () => {
       redis: redisHelper.redis,
     });
     const payload = {
-      userId: redisHelper.createUserId("session-user"),
+      userId: redisHelper.createUserId("sessions"),
       email: "session@example.com",
-      role: "user",
+     role: "user",
     };
-
-    const token = auth.signToken(payload);
+  console.log("payload:",payload)
+    const token = await auth.signToken(payload);
+    console.log("Token:",token)
     const stored = await waitForValue(() =>
-      redisHelper.redis.get(`session:${payload.userId}`)
+      redisHelper.redis.hgetall(`sessions:${payload.userId}`)
     );
-
-    expect(stored).toBe(token);
+  console.log("Stored:",stored)
+    
+  const sessions = Object.values(stored!);
+const match = sessions.some((s: any) => JSON.parse(s).token === token);
+expect(match).toBe(true);
   });
 });
