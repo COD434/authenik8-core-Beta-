@@ -6,6 +6,7 @@ import { RequestHandler } from "express";
 import {RateLimiterRedis} from "rate-limiter-flexible";
 import { Request, Response, NextFunction } from "express";
 import { HelmetOptions } from "helmet";
+import { Address4, Address6 } from 'ip-address';
 
 
 const WHITELIST_KEY ="whitelist:ips";
@@ -110,13 +111,13 @@ const entries = await this.listIPs();
 for (const entry of entries){
 if(entry.includes("/"))
 	{
-	const CIDR = (await import("ip-address")).default;
-	if(new CIDR(entry).isInSubnet(ip)) return true;
+	if (new Address4(ip).isInSubnet(new Address4(entry)) )return true;
 	}
 }
 return false;
 
 }catch(err){
+
 console.error("whitelist check error:",err);
 return false;
 }
