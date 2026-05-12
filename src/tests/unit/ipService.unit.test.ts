@@ -12,9 +12,9 @@ vi.mock('rate-limiter-flexible', () => ({
   RateLimiterRedis: vi.fn(() => mockRateLimiter),
 }));
 
-vi.mock('ip-cidr', () => ({
+vi.mock('ip-address', () => ({
   default: vi.fn((cidr: string) => ({
-    contains: vi.fn((ip: string) => {
+    isInSubnet: vi.fn((ip: string) => {
       // Simple stub: 10.0.0.0/8 contains 10.x.x.x
       return ip.startsWith('10.');
     }),

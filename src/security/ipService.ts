@@ -110,8 +110,8 @@ const entries = await this.listIPs();
 for (const entry of entries){
 if(entry.includes("/"))
 	{
-	const CIDR = (await import("ip-cidr")).default;
-	if(new CIDR(entry).contains(ip)) return true;
+	const CIDR = (await import("ip-address")).default;
+	if(new CIDR(entry).isInSubnet(ip)) return true;
 	}
 }
 return false;
