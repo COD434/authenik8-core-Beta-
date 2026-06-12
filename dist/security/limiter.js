@@ -67,8 +67,7 @@ const createRatelimiter = (config) => {
         try {
             bucket = await getTokenBucket();
         }
-        catch (error) {
-            console.error("Rate limiter unavailable:", error);
+        catch {
             res.status(503).json({
                 error: "Rate limiter unavailable"
             });

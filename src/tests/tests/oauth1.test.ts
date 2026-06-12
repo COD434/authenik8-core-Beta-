@@ -66,11 +66,7 @@ async function start() {
     try {
       const {profile,mode, userId} = await auth.oauth!.google!.handleCallback(req);
 
-      console.log("ENGINE INPUT:", {
-      mode,
-      userId,
-    });
-    const result = await identityEngine.resolveOAuth({
+	    const result = await identityEngine.resolveOAuth({
       profile,
       mode,
       userId,
@@ -138,8 +134,6 @@ async function start() {
   });
 }
 
-start().then(() => {
-  app.listen(4000, () => {
-    console.log("OAuth test server running on http://localhost:4000");
-  });
-});
+	start().then(() => {
+	  app.listen(4000);
+	});

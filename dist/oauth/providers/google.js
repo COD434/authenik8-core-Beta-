@@ -29,8 +29,7 @@ function createGoogleProvider(config, redisClient, identityEngine) {
                 res.redirect(url.toString());
                 return;
             }
-            catch (err) {
-                console.error("Google redirect error:", err);
+            catch {
                 res.status(500).json({ error: "OAuth redirect failed" });
                 return;
             }
@@ -56,7 +55,7 @@ function createGoogleProvider(config, redisClient, identityEngine) {
             params.append("code", code);
             params.append("grant_type", "authorization_code");
             params.append("redirect_uri", redirectUri);
-            // 1. Exchange code for tokens
+            // Exchange code for tokens
             const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
                 method: "POST",
                 headers: {
@@ -73,7 +72,6 @@ function createGoogleProvider(config, redisClient, identityEngine) {
                 throw new Error("OAuthError:No access token returned");
             }
             if (!tokenData.id_token) {
-                console.log("TOKEN DATA:", tokenData);
                 throw new Error("OAuthError:No id_token returned from Google");
             }
             const ticket = await client.verifyIdToken({

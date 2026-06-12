@@ -60,8 +60,7 @@ const setupRedis = async (options) => {
         await new Promise((resolve, reject) => {
             redisClient.once("ready", async () => {
                 try {
-                    const pong = await redisClient.ping();
-                    console.log("Redis ping response:", pong);
+                    await redisClient.ping();
                     resolve();
                 }
                 catch (err) {
@@ -77,19 +76,12 @@ const setupRedis = async (options) => {
             prefix: storeOptions.prefix,
             ttl: storeOptions.ttl
         });
-        redisClient.on("error", (err) => {
-            console.error("Redis client error:", err);
-        });
-        redisClient.on("ready", () => {
-            console.log("Redis client is ready");
-        });
-        redisClient.on("reconnecting", () => {
-            console.log("Redis client reconnecting...");
-        });
+        redisClient.on("error", () => { });
+        redisClient.on("ready", () => { });
+        redisClient.on("reconnecting", () => { });
         return { redisClient, redisStore };
     }
     catch (error) {
-        console.error("Redis setup failed:", error);
         throw error;
     }
 };

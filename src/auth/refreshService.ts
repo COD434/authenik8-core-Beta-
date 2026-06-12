@@ -76,25 +76,18 @@ const decoded = jwt.decode(token) as { exp?: number } | null;
 const now = Math.floor(Date.now() / 1000);
 const ttl = decoded?.exp ? Math.max(decoded.exp - now, 1) : 3600;
 
-await this.redisClient.set(`session:${userId}`, token, "EX", ttl);
+await this.redisClient.set(`sessions:${userId}`, token, "EX", ttl);
 }
 
 
  async generateRefreshToken(payload: TokenPayload): Promise<string> {
-
 	 if (!payload.userId) throw new Error("generateRefreshToken: payload.userId is missing");
-
 	 const token = jwt.sign({...payload,jti:randomUUID(),},this.refreshTokenSecret, {
-    expiresIn: this.refreshTokenExpiry as SignOptions["expiresIn"],
-  });
-
-  if(this.tokenStore.set){
-  await this.tokenStore.set(
-  `refresh:${payload.userId}`,token, 60 * 60 * 24 * 7
-  );
-  }
-
-  
+		 expiresIn: this.refreshTokenExpiry as SignOptions["expiresIn"],
+	 });
+	 if(this.tokenStore.set){
+		 await this.tokenStore.set(`refresh:${payload.userId}`,token, 60 * 60 * 24 * 7);
+	 }
   return token
 }
 
@@ -103,67 +96,54 @@ await this.redisClient.set(`session:${userId}`, token, "EX", ttl);
 	 if(!refreshToken){
 	 throw new MissingTokenError()
 	 }
-
 	 let decoded:TokenPayload;
-try{
-
-decoded = jwt.verify(refreshToken,this.refreshTokenSecret) as TokenPayload;
+	 try{
+		 decoded = jwt.verify(refreshToken,this.refreshTokenSecret) as TokenPayload;
 }catch(err){
-throw new InvalidTokenError()
+	throw new InvalidTokenError()
 }
 
-const lockKey = `lock:${decoded.userId}`;
-  const lockValue = await this.lock.acquire(lockKey, 5000);
+	const lockKey = `lock:${decoded.userId}`;
+  	const lockValue = await this.lock.acquire(lockKey, 5000);
 
-let hasLock = !!lockValue
+	let hasLock = !!lockValue
+	if (!lockValue) {
+		throw new InvalidTokenError("Concurrent refresh detected");
+	}
+	try{
+		const key = `refresh:${decoded.userId}`;
+		const storedToken = await this.tokenStore.get(key);
 
-  if (!lockValue) {
-    throw new InvalidTokenError("Concurrent refresh detected");
-  }
+		if (!storedToken || storedToken !== refreshToken){
+			throw new InvalidTokenError();
+		}
 
+	const newAccessToken = jwt.sign({ userId: decoded.userId, email: decoded.email },this.accessTokenSecret,
+					{ expiresIn: this.accessTokenExpiry as jwt.SignOptions["expiresIn"] 
+			});
+			await this.persistSessionToken(decoded.userId, newAccessToken);
 
-try{
-const key = `refresh:${decoded.userId}`;
-const storedToken = await this.tokenStore.get(key);
+	let newRefreshToken:string | undefined;
 
+	if(this.rotateRefreshTokens && this.tokenStore.set){
+	const key = `refresh:${decoded.userId}`;
+	newRefreshToken =jwt.sign({userId:decoded.userId,email : decoded.email,jti:randomUUID(),},this.refreshTokenSecret,
+				  {expiresIn:this.refreshTokenExpiry as jwt.SignOptions["expiresIn"]
+	});
 
-if (!storedToken || storedToken !== refreshToken){
-throw new InvalidTokenError();
-}
-
-const newAccessToken = jwt.sign(
-        { userId: decoded.userId, email: decoded.email },
-        this.accessTokenSecret,
-        { expiresIn: this.accessTokenExpiry as jwt.SignOptions["expiresIn"] }
-    );
-
-await this.persistSessionToken(decoded.userId, newAccessToken);
-
-let newRefreshToken:string | undefined;
-
-if(this.rotateRefreshTokens && this.tokenStore.set){
-const key = `refresh:${decoded.userId}`
-
-;
- newRefreshToken =jwt.sign({userId:decoded.userId,email : decoded.email,jti:randomUUID(),},
-	this.refreshTokenSecret,
-{expiresIn:this.refreshTokenExpiry as jwt.SignOptions["expiresIn"]});
-
-if (!this.tokenStore.getset) {
-  throw new Error("TokenStore must implement getset for atomic refresh rotation");
-}
-const PreviousToken =await this.tokenStore.getset(key,newRefreshToken,60 * 60 * 24 * 7)
-if(PreviousToken !== refreshToken && PreviousToken  !== storedToken){
-throw new InvalidTokenError("Concurrent refresh detected")}
-}
-
- return{
- accessToken:newAccessToken,
- refreshToken:newRefreshToken ?? refreshToken
- };
-}finally {
-    if (hasLock && lockValue) await this.lock.release(lockKey, lockValue);
-  }
-}
-
+	if (!this.tokenStore.getset) {
+		throw new Error("TokenStore must implement getset for atomic refresh rotation");
+	}
+	const PreviousToken =await this.tokenStore.getset(key,newRefreshToken,60 * 60 * 24 * 7)
+	if(PreviousToken !== refreshToken && PreviousToken  !== storedToken){
+		throw new InvalidTokenError("Concurrent refresh detected")}
+	}
+	return{
+		accessToken:newAccessToken,
+		refreshToken:newRefreshToken ?? refreshToken
+	};
+	}finally {
+		if (hasLock && lockValue) await this.lock.release(lockKey, lockValue);
+		}
+	}
 }

@@ -1,18 +1,15 @@
-import { Redis } from "ioredis";
 export declare class RedisTokenStore {
-    private redis;
-    private debug;
+    private redis?;
     private prefix;
-    constructor(redis: Redis, debug?: boolean);
+    constructor(redis?: any | undefined, _debug?: boolean);
     private key;
-    private log;
     storeRefreshToken(token: string, userId: string, ttl: number): Promise<void>;
-    getRefreshToken(userId: string): Promise<string | null>;
+    getRefreshToken(userId: string): Promise<any>;
     getset(key: string, value: string, expiry?: number): Promise<string | null>;
     deleteRefreshToken(userId: string): Promise<void>;
     blacklistToken(userId: string, ttl: number): Promise<void>;
     isBlacklisted(userId: string): Promise<boolean>;
-    incrementRateLimit(ip: string, ttl: number): Promise<number>;
+    incrementRateLimit(ip: string, ttl: number): Promise<any>;
     addToWhitelist(ip: string): Promise<void>;
     removeFromWhitelist(ip: string): Promise<void>;
     isWhitelisted(ip: string): Promise<boolean>;

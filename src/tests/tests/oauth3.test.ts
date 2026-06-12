@@ -87,10 +87,8 @@ async function start() {
   // =====================================================
   // STEP 2: GITHUB LOGIN (DIRECT LOGIN)
   // =====================================================
-  app.get("/auth/github", (req, res) => {
-	  console.log("🔥 HIT /auth/github");
-  
-    auth.oauth!.github!.redirect(req, res);
+	  app.get("/auth/github", (req, res) => {
+	    auth.oauth!.github!.redirect(req, res);
     return
   });
 
@@ -119,10 +117,9 @@ async function start() {
   // =====================================================
   // STEP 3: LINK GITHUB TO EXISTING USER (NO req.user)
   // =====================================================
-  app.get("/auth/github/link",(req, res) => {
-   // auth.oauth!.github!.redirect(req, res);
-console.log("🔥 HIT /auth/github/link");
-  const user = getUserFromHeader(req); // ✅ REQUIRED HERE
+	  app.get("/auth/github/link",(req, res) => {
+	   // auth.oauth!.github!.redirect(req, res);
+	  const user = getUserFromHeader(req); // ✅ REQUIRED HERE
 
   if (!user) {
     return res.status(401).json({ error: "Unauthorized" });
@@ -163,9 +160,6 @@ return
 // =========================
 // START SERVER
 // =========================
-console.log("USERS:", memoryAdapter.dump());
 start().then(() => {
-  app.listen(4000, () => {
-    console.log("OAuth test running on http://localhost:4000");
-  });
+  app.listen(4000);
 });

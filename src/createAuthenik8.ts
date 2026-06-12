@@ -76,15 +76,14 @@ const refreshService = new RefreshService({
         ...config.oauth,
         redisClient,
         identityEngine,
-      })
-    : undefined;
+      }): undefined;
 
   
 const issueTokensFromProfile = async (
   profile: OAuthProfile
 ): Promise<TokenPair> => {
-  if (!isVerifiedOAuthEmail(profile.email_verified)) {
-    throw new Error("OAuth profile email must be verified before issuing tokens");
+  	if (!isVerifiedOAuthEmail(profile.email_verified)) {
+    	throw new Error("OAuth profile email must be verified before issuing tokens");
   }
 
   const result = await identityEngine.resolveOAuth({
@@ -106,8 +105,7 @@ const issueTokensFromProfile = async (
   if (result.type === "LINK_REQUIRED") {
     throw new Error(result.message);
   }
-
-  throw new Error("OAuth token issuance failed");
+throw new Error("OAuth token issuance failed");
 };
 
 	const security = new SecurityModule({
@@ -125,8 +123,7 @@ return{
 	guestToken:jwtService.guestToken.bind(jwtService),
 	
 	//refresh
-	refreshToken:
-		refreshService.refresh.bind(refreshService),
+	refreshToken:refreshService.refresh.bind(refreshService),
 	generateRefreshToken: refreshService.generateRefreshToken.bind(refreshService),
 //security
    rateLimit: security.rateLimiterMiddleware(),
@@ -140,9 +137,9 @@ return{
 
 
 	//middleware
-requireAdmin :requireAdmin({ jwtSecret:
-	config.jwtSecret,
-			   redisclient:redisClient
+requireAdmin :requireAdmin({
+	jwtSecret:config.jwtSecret,
+	store:redisClient
 }),
 incognito:createIncognito({
   jwtSecret: config.jwtSecret,

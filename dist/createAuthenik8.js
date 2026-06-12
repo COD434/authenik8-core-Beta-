@@ -49,8 +49,7 @@ const createAuthenik8 = async (config) => {
             ...config.oauth,
             redisClient,
             identityEngine,
-        })
-        : undefined;
+        }) : undefined;
     const issueTokensFromProfile = async (profile) => {
         if (!isVerifiedOAuthEmail(profile.email_verified)) {
             throw new Error("OAuth profile email must be verified before issuing tokens");
@@ -97,8 +96,9 @@ const createAuthenik8 = async (config) => {
         removeIP: security.removeIP.bind(security),
         listIPs: security.listIPs.bind(security),
         //middleware
-        requireAdmin: (0, adminService_1.requireAdmin)({ jwtSecret: config.jwtSecret,
-            redisclient: redisClient
+        requireAdmin: (0, adminService_1.requireAdmin)({
+            jwtSecret: config.jwtSecret,
+            store: redisClient
         }),
         incognito: (0, guestModeService_1.createIncognito)({
             jwtSecret: config.jwtSecret,

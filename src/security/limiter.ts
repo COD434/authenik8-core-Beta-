@@ -26,6 +26,7 @@ const results = await this.redis
 const data= results?.[0]?.[1] ?? {} 
 const bucket = data as {tokens?: string;lastRefill?: string}
 || {} ;
+
 const currentToken = parseFloat(bucket.tokens || capacity.toString ());
 const lastRefill = parseFloat(bucket.lastRefill || now.toString())
 const timeElapsed= (now - lastRefill) / 1000;
@@ -43,9 +44,6 @@ tokens:(newToken - 1).toString(),
 lastRefill: now.toString()
 })
 this.redis.expire(`rate_limit:${key}`, 3600)
-
-
-
 return {allowed:true ,remaining:Math.floor(newToken - 1)};
  }
 }
@@ -85,9 +83,8 @@ let bucket: TokenBucket;
 
 try{
 bucket = await getTokenBucket();
-}catch(error){
-console.error("Rate limiter unavailable:", error);
-res.status(503).json({
+	}catch{
+	res.status(503).json({
 error:"Rate limiter unavailable"
 })
 return;
@@ -109,8 +106,8 @@ return next();
 }else{
 res.status(429).json({
 error:`Too many requests`
- })
-}
+    })
+  }
  }
 }
 

@@ -41,14 +41,11 @@ describe("session persistence", () => {
       email: "session@example.com",
      role: "user",
     };
-  console.log("payload:",payload)
-    const token = await auth.signToken(payload);
-    console.log("Token:",token)
-    const stored = await waitForValue(() =>
-      redisHelper.redis.hgetall(`sessions:${payload.userId}`)
-    );
-  console.log("Stored:",stored)
-    
+	    const token = await auth.signToken(payload);
+	    const stored = await waitForValue(() =>
+	      redisHelper.redis.hgetall(`sessions:${payload.userId}`)
+	    );
+	    
   const sessions = Object.values(stored!);
 const match = sessions.some((s: any) => JSON.parse(s).token === token);
 expect(match).toBe(true);

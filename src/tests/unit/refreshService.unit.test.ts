@@ -1,4 +1,4 @@
-  import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import jwt from 'jsonwebtoken';
 import { randomUUID } from 'crypto';
 import { RefreshService, MissingTokenError, InvalidTokenError, type RefreshServiceOptions, type TokenStore } from '../../auth/refreshService';
@@ -126,7 +126,7 @@ describe('RefreshService', () => {
       expect(result.accessToken).toBe(mockAccessToken);
       expect(result.refreshToken).toBe(mockRefreshToken);
       expect(redisClient.set).toHaveBeenCalledWith(
-        'session:user123',
+        'sessions:user123',
         mockAccessToken,
         'EX',
         expect.any(Number)

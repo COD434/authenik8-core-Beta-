@@ -49,10 +49,9 @@ const validateRedisConfig = (config:RedisConfig) => {
      ) {
     throw new Error("Redis URL must use 'redis://' protocol");
   }
-
 };
 
-const getRedisConfig = (options?:Partial<RedisConfig>):  RedisConfig => {
+ const getRedisConfig = (options?:Partial<RedisConfig>):  RedisConfig => {
  const port = options?.port ?
 	 Number(options.port) :
 	 process.env.REDIS_PORT ? Number(process.env.REDIS_PORT) : 
@@ -65,16 +64,14 @@ const config: RedisConfig = {
     password: options?.password || process.env.REDIS_PASSWORD|| undefined,
     ...options
   };
-
   validateRedisConfig(config);
   return config;
 };
 
 const setupRedis = async (options?: SetupRedisOptions) => {
-
-  try {
-    const config = getRedisConfig(options?.redisConfig);
-	  const storeOptions = {...DEFAULT_STORE_OPTIONS, ...options?.storeOptions}
+	try {
+		const config = getRedisConfig(options?.redisConfig);
+		const storeOptions = {...DEFAULT_STORE_OPTIONS, ...options?.storeOptions}
     
     const redisClient = new Redis({
     host: config.host as string,
@@ -86,11 +83,10 @@ const setupRedis = async (options?: SetupRedisOptions) => {
     });
 
       await new Promise<void>((resolve, reject)=>{
-      redisClient.once("ready", async () =>{
-      try{
-      const pong = await redisClient.ping();
-      console.log("Redis ping response:",pong);
-      resolve();
+	      redisClient.once("ready", async () =>{
+	      try{
+	      await redisClient.ping();
+	      resolve();
       }catch(err){
       reject(err);
        }
@@ -107,21 +103,12 @@ const setupRedis = async (options?: SetupRedisOptions) => {
       });
 
     
-    redisClient.on("error", (err:Error) => {
-      console.error("Redis client error:", err);
-    });
-
-    redisClient.on("ready", () => {
-      console.log("Redis client is ready");
-    });
-
-    redisClient.on("reconnecting", () => {
-      console.log("Redis client reconnecting...");
-    });
+    redisClient.on("error", () => {});
+    redisClient.on("ready", () => {});
+    redisClient.on("reconnecting", () => {});
 
     return{ redisClient, redisStore };
   } catch (error) {
-    console.error("Redis setup failed:", error);
     throw error; 
   }
 };

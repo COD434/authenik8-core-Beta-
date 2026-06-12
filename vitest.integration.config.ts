@@ -1,6 +1,11 @@
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({
+  resolve: {
+    alias: {
+      ioredis: "ioredis-mock"
+    }
+  },
   test: {
     globals: true,
     environment: "node",

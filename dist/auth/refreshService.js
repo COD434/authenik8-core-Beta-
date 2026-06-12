@@ -36,7 +36,7 @@ class RefreshService {
         const decoded = jsonwebtoken_1.default.decode(token);
         const now = Math.floor(Date.now() / 1000);
         const ttl = decoded?.exp ? Math.max(decoded.exp - now, 1) : 3600;
-        await this.redisClient.set(`session:${userId}`, token, "EX", ttl);
+        await this.redisClient.set(`sessions:${userId}`, token, "EX", ttl);
     }
     async generateRefreshToken(payload) {
         if (!payload.userId)
@@ -72,12 +72,14 @@ class RefreshService {
             if (!storedToken || storedToken !== refreshToken) {
                 throw new InvalidTokenError();
             }
-            const newAccessToken = jsonwebtoken_1.default.sign({ userId: decoded.userId, email: decoded.email }, this.accessTokenSecret, { expiresIn: this.accessTokenExpiry });
+            const newAccessToken = jsonwebtoken_1.default.sign({ userId: decoded.userId, email: decoded.email }, this.accessTokenSecret, { expiresIn: this.accessTokenExpiry
+            });
             await this.persistSessionToken(decoded.userId, newAccessToken);
             let newRefreshToken;
             if (this.rotateRefreshTokens && this.tokenStore.set) {
                 const key = `refresh:${decoded.userId}`;
-                newRefreshToken = jsonwebtoken_1.default.sign({ userId: decoded.userId, email: decoded.email, jti: (0, crypto_1.randomUUID)(), }, this.refreshTokenSecret, { expiresIn: this.refreshTokenExpiry });
+                newRefreshToken = jsonwebtoken_1.default.sign({ userId: decoded.userId, email: decoded.email, jti: (0, crypto_1.randomUUID)(), }, this.refreshTokenSecret, { expiresIn: this.refreshTokenExpiry
+                });
                 if (!this.tokenStore.getset) {
                     throw new Error("TokenStore must implement getset for atomic refresh rotation");
                 }

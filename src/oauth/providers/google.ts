@@ -11,28 +11,18 @@ type GoogleTokenResponse = {
   id_token?: string;
 };
 
-export function createGoogleProvider(config: GoogleOAuthConfig,
-				     redisClient:RedisClient, 
-				    identityEngine: IdentityEngine
-				    ) {
-  const { clientId, clientSecret, redirectUri } = config;
-
-  return {
-
-    redirect:async (req:Request, res:Response): Promise<void> => {
-try{
-
-
-	const state = crypto.randomBytes(32).toString("hex");
+export function createGoogleProvider(config: GoogleOAuthConfig,redisClient:RedisClient, identityEngine: IdentityEngine) {
+	const { clientId, clientSecret, redirectUri } = config;
+	return {
+		redirect:async (req:Request, res:Response): Promise<void> => {
+			try{
+				const state = crypto.randomBytes(32).toString("hex");
 	
 
 const mode = req.path.includes("link") ? "link" : "login";
 const authUser = (req as any).user ?? null;
 
-await redisClient.setex(
-  `oauth:state:${state}`,
-  300,
-  JSON.stringify({
+await redisClient.setex(`oauth:state:${state}`,300,JSON.stringify({
     userId: authUser?.userId ?? null,
     mode,
   })
@@ -42,29 +32,22 @@ await redisClient.setex(
 
 
       const url = new URL("https://accounts.google.com/o/oauth2/v2/auth");
-     url.searchParams.set("client_id", clientId);
-     url.searchParams.set("redirect_uri", redirectUri);
-     url.searchParams.set("response_type", "code");
-      url.searchParams.set("scope", "openid email profile");
-      url.searchParams.set("access_type", "offline");
-      url.searchParams.set("prompt", "consent");
-     
-      url.searchParams.set("state", state)
-      
+     	url.searchParams.set("client_id", clientId);
+     	url.searchParams.set("redirect_uri", redirectUri);
+     	url.searchParams.set("response_type", "code");
+	url.searchParams.set("scope", "openid email profile");
+      	url.searchParams.set("access_type", "offline");
+      	url.searchParams.set("prompt", "consent");
+     	url.searchParams.set("state", state)
 
-     res.redirect(url.toString());
-     return;
-      } catch (err) {
-    console.error("Google redirect error:", err);
-     res.status(500).json({ error: "OAuth redirect failed" });
-     return;
-    }
-},
-handleCallback: async (req:Request): Promise<{
-profile: OAuthProfile;
-mode: "login" | "link";
-userId: string | null;
-    }> => {
+	res.redirect(url.toString());
+	return;
+			} catch {
+				res.status(500).json({ error: "OAuth redirect failed" });
+				return;
+			}
+		},
+    handleCallback: async (req:Request): Promise<{profile: OAuthProfile;mode: "login" | "link";userId: string | null;}> => {
       const code = req.query.code as string;
       const client = new OAuth2Client(clientId);
 
@@ -95,7 +78,7 @@ const { userId, mode } = JSON.parse(stored);
 
 
 
-      // 1. Exchange code for tokens
+      // Exchange code for tokens
       const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
         method: "POST",
         headers: {
@@ -115,7 +98,6 @@ if(!tokenData.access_token){
 	throw new Error("OAuthError:No access token returned")
 }
 if (!tokenData.id_token) {
-  console.log("TOKEN DATA:", tokenData);
   throw new Error("OAuthError:No id_token returned from Google");
 }
 const ticket = await client.verifyIdToken({
@@ -151,7 +133,6 @@ const profile: OAuthProfile = {
 };
 
 await redisClient.del(`oauth:state:${state}`);
-
 return {
     profile,
     mode,

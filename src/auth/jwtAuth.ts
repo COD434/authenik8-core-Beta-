@@ -27,10 +27,8 @@ redisClient?:any;
 onGuestToken?: () => void;
 }
 export class JWTService{
-
 private jwtSecret:string;
 private expiry?:SignOptions["expiresIn"]
-
 private redisclient?:any;
 private onGuestToken?: () => void;
 
@@ -75,8 +73,7 @@ await this.redisclient.hset(`sessions:${userId}`
 JSON.stringify({token, ...meta})
 );
 await this.redisclient.expire(`sessions:${userId}`,ttl)
-}catch(err){
- console.error('Failed to persist session token:', err);
+}catch{
 }
 }
 
@@ -127,14 +124,10 @@ return res.status(401).json({message:"Unauthorized"})
 }
 try{
 const decoded =jwt.verify(token,this.jwtSecret)as JwtPayload;
-console.log("Redis Client exists?", !!this.redisclient);
-console.log("Decoded UserID:", decoded.userId);
-console.log("Full key:", `sessions:${decoded.userId}`);
 
 if(this.redisclient && decoded.userId){
 const sessions = await this.redisclient.hgetall(`sessions:${decoded.userId}`);
 
-console.log("HGETALL called!")
 const match = Object.values(sessions || {}).find(
   (s: any) => JSON.parse(s).token === token
 );

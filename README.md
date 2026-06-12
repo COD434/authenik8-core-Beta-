@@ -1,4 +1,4 @@
-# Authenik8-core
+# Authenik8-core [Beta]
 
 
 

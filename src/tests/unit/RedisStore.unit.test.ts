@@ -223,33 +223,3 @@ describe('get', () => {
   });
 });
 
-
-describe('debug logging', () => {
-  it('logs to console when debug=true', async () => {
-    const spy = vi.spyOn(console, 'log').mockImplementation(() => {});
-    const store = makeStore(true);
-    await store.getRefreshToken('user-1');
-
-    expect(spy).toHaveBeenCalled();
-    spy.mockRestore();
-  });
-
-  it('redacts value for refresh keys in debug output', async () => {
-    const spy = vi.spyOn(console, 'log').mockImplementation(() => {});
-    const store = makeStore(true);
-    await store.storeRefreshToken('tok', 'user-1', 3600);
-
-    const logArg = spy.mock.calls[0]?.[1];
-    expect(logArg?.value).toBe('<redacted>');
-    spy.mockRestore();
-  });
-
-  it('does not log when debug=false', async () => {
-    const spy = vi.spyOn(console, 'log').mockImplementation(() => {});
-    const store = makeStore(false);
-    await store.getRefreshToken('user-1');
-
-    expect(spy).not.toHaveBeenCalled();
-    spy.mockRestore();
-  });
-});

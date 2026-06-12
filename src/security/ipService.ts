@@ -85,13 +85,7 @@ blockDuration: options.rateLimitBlock || 300,
 
 })
 }
-this.redisClient.on("error",(err)=>
- console.error("Security Redis error:",err)
- );
-this.redisClient.on("connect",() =>{
-console.log("SecurityRedis  Connected to:",this.redisClient.options.host);
-		   
-})
+this.redisClient.on("error",()=>{});
 }
 
 
@@ -114,11 +108,9 @@ if(entry.includes("/"))
 	if (new Address4(ip).isInSubnet(new Address4(entry)) )return true;
 	}
 }
+
 return false;
-
-}catch(err){
-
-console.error("whitelist check error:",err);
+}catch{
 return false;
 }
 }
@@ -179,7 +171,8 @@ this.rateLimiter.consume(ip).then(()=> next()).catch(()=> res.status(429).send("
 
 helmetMiddleware():RequestHandler{
 if(!this.helmetEnabled){
-return(req: Request,  res:Response, next:NextFunction)=> next();}
+return(req: Request,  res:Response, next:NextFunction)=> next();
+}
  
 const helmetDirectives={
 defaultSrc:["'self'"],
@@ -206,4 +199,3 @@ referrerPolicy:{policy:"same-origin"},
 }as HelmetOptions);
 }
 }
-

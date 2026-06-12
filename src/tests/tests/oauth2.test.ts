@@ -151,8 +151,6 @@ async function start() {
 // =========================
 // START SERVER
 // =========================
-start().then(() => {
-  app.listen(4000, () => {
-    console.log("OAuth test server running on http://localhost:4000");
-  });
-});
+	start().then(() => {
+	  app.listen(4000);
+	});

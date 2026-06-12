@@ -21,18 +21,13 @@ type GitHubUserResponse = {
   name?: string;
 };
 
-export function createGitHubProvider(config:GitHubOAuthConfig,
-				     redisClient:RedisClient,
-				    identityEngine:IdentityEngine) {
-  const { clientId, clientSecret, redirectUri } = config;
+export function createGitHubProvider(config:GitHubOAuthConfig,redisClient:RedisClient,identityEngine:IdentityEngine) {
+	const { clientId, clientSecret, redirectUri } = config;
 
   return {
     redirect: async (req: Request, res: Response,mode: "login" | "link" = "login"):Promise<void> => {
 
-
-
-  if (res.headersSent) {
-    console.log("🚨 HEADERS ALREADY SENT — SKIPPING");
+ if (res.headersSent) {
     return;
   }
 
@@ -44,54 +39,36 @@ const authUser = (req as any).user ?? null;
 
 
 await redisClient.setex(
-  `oauth:state:${state}`,
-  300,
-  JSON.stringify({
+  `oauth:state:${state}`,300,JSON.stringify({
     userId: authUser?.userId ?? null,
     mode,
   })
 );
-
-
-
-      const url = new URL("https://github.com/login/oauth/authorize");
+const url = new URL("https://github.com/login/oauth/authorize");
 
       url.searchParams.set("client_id", clientId);
       url.searchParams.set("redirect_uri", redirectUri);
       url.searchParams.set("scope", "read:user user:email");
       url.searchParams.set("state",state);
-      
-      console.log("REDIRECT STATE:", {
-    userId: authUser?.userId,
-    mode,
-  });
 
-      res.redirect(url.toString());
-      return
+  res.redirect(url.toString());
+  return
       
     },
     
 
-    handleCallback:
- async (req: Request): Promise<{
-	profile: OAuthProfile;
-	 mode: "login" | "link";
-        userId: string | null;
-    }> => {
-      const code = req.query.code as string;
-    const state = req.query.state as string;
+    handleCallback:async (req: Request): Promise<{profile: OAuthProfile;mode: "login" | "link";userId: string | null;}> => {
+      	
+	const code = req.query.code as string;
+    	const state = req.query.state as string;
 
     if (!state) {
       throw new Error("OAuthError:Missing state");
     }
-
     const stored = await redisClient.get(`oauth:state:${state}`);
-
     if (!stored) {
       throw new Error("OAuthError:Invalid or expired state");
     }
-
- 
 
     const { userId, mode } = JSON.parse(stored);
 

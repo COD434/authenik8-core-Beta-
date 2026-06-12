@@ -16,12 +16,8 @@ class JWTService {
             }
             try {
                 const decoded = jsonwebtoken_1.default.verify(token, this.jwtSecret);
-                console.log("Redis Client exists?", !!this.redisclient);
-                console.log("Decoded UserID:", decoded.userId);
-                console.log("Full key:", `sessions:${decoded.userId}`);
                 if (this.redisclient && decoded.userId) {
                     const sessions = await this.redisclient.hgetall(`sessions:${decoded.userId}`);
-                    console.log("HGETALL called!");
                     const match = Object.values(sessions || {}).find((s) => JSON.parse(s).token === token);
                     if (!match) {
                         return res.status(403).json({ success: false, message: "invalid session", errors: [] });
@@ -69,8 +65,7 @@ class JWTService {
             await this.redisclient.hset(`sessions:${userId}`, meta.sessionId, JSON.stringify({ token, ...meta }));
             await this.redisclient.expire(`sessions:${userId}`, ttl);
         }
-        catch (err) {
-            console.error('Failed to persist session token:', err);
+        catch {
         }
     }
     async signToken(payload, meta) {

@@ -10,7 +10,6 @@ function createGitHubProvider(config, redisClient, identityEngine) {
     return {
         redirect: async (req, res, mode = "login") => {
             if (res.headersSent) {
-                console.log("🚨 HEADERS ALREADY SENT — SKIPPING");
                 return;
             }
             const state = crypto_1.default.randomBytes(32).toString("hex");
@@ -24,10 +23,6 @@ function createGitHubProvider(config, redisClient, identityEngine) {
             url.searchParams.set("redirect_uri", redirectUri);
             url.searchParams.set("scope", "read:user user:email");
             url.searchParams.set("state", state);
-            console.log("REDIRECT STATE:", {
-                userId: authUser?.userId,
-                mode,
-            });
             res.redirect(url.toString());
             return;
         },
