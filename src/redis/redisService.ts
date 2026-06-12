@@ -69,9 +69,8 @@ const config: RedisConfig = {
 };
 
 const setupRedis = async (options?: SetupRedisOptions) => {
-	try {
-		const config = getRedisConfig(options?.redisConfig);
-		const storeOptions = {...DEFAULT_STORE_OPTIONS, ...options?.storeOptions}
+			const config = getRedisConfig(options?.redisConfig);
+			const storeOptions = {...DEFAULT_STORE_OPTIONS, ...options?.storeOptions}
     
     const redisClient = new Redis({
     host: config.host as string,
@@ -108,9 +107,6 @@ const setupRedis = async (options?: SetupRedisOptions) => {
     redisClient.on("reconnecting", () => {});
 
     return{ redisClient, redisStore };
-  } catch (error) {
-    throw error; 
-  }
 };
 const initializeRedisClient =async () => {
 if(!redisClientInstance){
