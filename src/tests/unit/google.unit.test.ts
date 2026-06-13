@@ -11,8 +11,6 @@ import type { Provider } from '../../oauth/userStore';
 //});
 
 //import { mockGetPayload, mockVerifyIdToken } from 'google-auth-library';
-
-
 const { mockGetPayload, mockVerifyIdToken } = vi.hoisted(() => {
   const mockGetPayload = vi.fn();
   const mockVerifyIdToken = vi.fn().mockResolvedValue({ getPayload: mockGetPayload });
@@ -20,7 +18,9 @@ const { mockGetPayload, mockVerifyIdToken } = vi.hoisted(() => {
 });
 
 vi.mock('google-auth-library', () => ({
-  OAuth2Client: vi.fn(() => ({ verifyIdToken: mockVerifyIdToken })),
+  OAuth2Client: vi.fn(function () {
+    return { verifyIdToken: mockVerifyIdToken };
+  }),
 }));
 const mockRedis = {
   setex: vi.fn().mockResolvedValue('OK'),

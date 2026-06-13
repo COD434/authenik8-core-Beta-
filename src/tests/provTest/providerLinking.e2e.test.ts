@@ -16,11 +16,13 @@ const { googlePayload } = vi.hoisted(() => ({
 }));
 
 vi.mock("google-auth-library", () => ({
-  OAuth2Client: vi.fn(() => ({
-    verifyIdToken: vi.fn().mockResolvedValue({
-      getPayload: () => googlePayload,
-    }),
-  })),
+  OAuth2Client: vi.fn(function () {
+    return {
+      verifyIdToken: vi.fn().mockResolvedValue({
+        getPayload: () => googlePayload,
+      }),
+    };
+  }),
 }));
 
 class TestRedis {

@@ -1,39 +1,25 @@
 <?xml version="1.0" encoding="UTF-8" ?>
-<testsuites name="vitest tests" tests="8" failures="0" errors="0" time="0.609653538">
-    <testsuite name="src/tests/integration/full.intergration.test.ts" timestamp="2026-05-03T11:09:16.765Z" hostname="localhost" tests="5" failures="0" errors="0" skipped="0" time="0.343392308">
-        <testcase classname="src/tests/integration/full.intergration.test.ts" name="Authenik8 Full Integration &gt; should login and receive tokens" time="0.085700308">
+<testsuites name="vitest tests" tests="8" failures="0" errors="0" time="0.247087944">
+    <testsuite name="src/tests/integration/full.intergration.test.ts" timestamp="2026-06-12T21:29:32.289Z" hostname="archlinux" tests="5" failures="0" errors="0" skipped="0" time="0.14514239">
+        <testcase classname="src/tests/integration/full.intergration.test.ts" name="Authenik8 Full Integration &gt; should login and receive tokens" time="0.040616381">
         </testcase>
-        <testcase classname="src/tests/integration/full.intergration.test.ts" name="Authenik8 Full Integration &gt; should access protected route with valid token" time="0.015826077">
+        <testcase classname="src/tests/integration/full.intergration.test.ts" name="Authenik8 Full Integration &gt; should access protected route with valid token" time="0.005646608">
         </testcase>
-        <testcase classname="src/tests/integration/full.intergration.test.ts" name="Authenik8 Full Integration &gt; should reject request without token" time="0.010359385">
+        <testcase classname="src/tests/integration/full.intergration.test.ts" name="Authenik8 Full Integration &gt; should reject request without token" time="0.003319692">
         </testcase>
-        <testcase classname="src/tests/integration/full.intergration.test.ts" name="Authenik8 Full Integration &gt; should refresh access token" time="0.087770385">
+        <testcase classname="src/tests/integration/full.intergration.test.ts" name="Authenik8 Full Integration &gt; should refresh access token" time="0.046430185">
         </testcase>
-        <testcase classname="src/tests/integration/full.intergration.test.ts" name="Authenik8 Full Integration &gt; should NOT allow reuse of old refresh token" time="0.057507384">
-        </testcase>
-    </testsuite>
-    <testsuite name="src/tests/integration/oauthIdentity.integration.test.ts" timestamp="2026-05-03T11:09:16.781Z" hostname="localhost" tests="2" failures="0" errors="0" skipped="0" time="0.165987692">
-        <testcase classname="src/tests/integration/oauthIdentity.integration.test.ts" name="OAuth identity issuance &gt; issues tokens against a stable internal user id across auth instances" time="0.081799923">
-        </testcase>
-        <testcase classname="src/tests/integration/oauthIdentity.integration.test.ts" name="OAuth identity issuance &gt; rejects unverified OAuth profiles" time="0.005618154">
+        <testcase classname="src/tests/integration/full.intergration.test.ts" name="Authenik8 Full Integration &gt; should NOT allow reuse of old refresh token" time="0.027627822">
         </testcase>
     </testsuite>
-    <testsuite name="src/tests/integration/sessionPersistence.integration.test.ts" timestamp="2026-05-03T11:09:16.786Z" hostname="localhost" tests="1" failures="0" errors="0" skipped="0" time="0.100273538">
-        <testcase classname="src/tests/integration/sessionPersistence.integration.test.ts" name="session persistence &gt; signToken persists the active access token session" time="0.039766769">
-            <system-out>
-payload: {
-  userId: [32m&apos;local:session-persistence:b22b7905-7434-4499-8818-09bb69f6bde1:sessions&apos;[39m,
-  email: [32m&apos;session@example.com&apos;[39m,
-  role: [32m&apos;user&apos;[39m
-}
-
-Token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiJsb2NhbDpzZXNzaW9uLXBlcnNpc3RlbmNlOmIyMmI3OTA1LTc0MzQtNDQ5OS04ODE4LTA5YmI2OWY2YmRlMTpzZXNzaW9ucyIsImVtYWlsIjoic2Vzc2lvbkBleGFtcGxlLmNvbSIsInJvbGUiOiJ1c2VyIiwic2Vzc2lvbklkIjoiZDViN2Q0NGMtZWYyZi00MzhjLThmMDMtMmEyYmI0MzQ0MDdhIiwiaWF0IjoxNzc3ODA2NTU1LCJleHAiOjE3Nzc4MDc0NTV9.1Yp_tuxvrrbZtfPzAghZ44OD9eyaHyL25RFSBg3xGAU
-
-Stored: {
-  [32m&apos;d5b7d44c-ef2f-438c-8f03-2a2bb434407a&apos;[39m: [32m&apos;{&quot;token&quot;:&quot;eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiJsb2NhbDpzZXNzaW9uLXBlcnNpc3RlbmNlOmIyMmI3OTA1LTc0MzQtNDQ5OS04ODE4LTA5YmI2OWY2YmRlMTpzZXNzaW9ucyIsImVtYWlsIjoic2Vzc2lvbkBleGFtcGxlLmNvbSIsInJvbGUiOiJ1c2VyIiwic2Vzc2lvbklkIjoiZDViN2Q0NGMtZWYyZi00MzhjLThmMDMtMmEyYmI0MzQ0MDdhIiwiaWF0IjoxNzc3ODA2NTU1LCJleHAiOjE3Nzc4MDc0NTV9.1Yp_tuxvrrbZtfPzAghZ44OD9eyaHyL25RFSBg3xGAU&quot;,&quot;sessionId&quot;:&quot;d5b7d44c-ef2f-438c-8f03-2a2bb434407a&quot;,&quot;device&quot;:&quot;unknown&quot;,&quot;ip&quot;:&quot;unknown&quot;,&quot;createdAt&quot;:1777806555488}&apos;[39m
-}
-
-            </system-out>
+    <testsuite name="src/tests/integration/oauthIdentity.integration.test.ts" timestamp="2026-06-12T21:29:32.293Z" hostname="archlinux" tests="2" failures="0" errors="0" skipped="0" time="0.076683081">
+        <testcase classname="src/tests/integration/oauthIdentity.integration.test.ts" name="OAuth identity issuance &gt; issues tokens against a stable internal user id across auth instances" time="0.056677359">
+        </testcase>
+        <testcase classname="src/tests/integration/oauthIdentity.integration.test.ts" name="OAuth identity issuance &gt; rejects unverified OAuth profiles" time="0.003401525">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/tests/integration/sessionPersistence.integration.test.ts" timestamp="2026-06-12T21:29:32.294Z" hostname="archlinux" tests="1" failures="0" errors="0" skipped="0" time="0.025262473">
+        <testcase classname="src/tests/integration/sessionPersistence.integration.test.ts" name="session persistence &gt; signToken persists the active access token session" time="0.01098784">
         </testcase>
     </testsuite>
 </testsuites>

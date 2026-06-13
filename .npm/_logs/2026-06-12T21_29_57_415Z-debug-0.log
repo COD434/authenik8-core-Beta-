@@ -1,0 +1,41 @@
+0 verbose cli /usr/bin/node /usr/bin/npm
+1 info using npm@11.16.0
+2 info using node@v26.2.0
+3 silly config load:file:/usr/lib/node_modules/npm/npmrc
+4 silly config load:file:/home/karabo/projects/authenik8-core/.npm/_npx/ebaba8b9e55fd0a9/node_modules/node/.npmrc
+5 silly config load:file:/home/karabo/.npmrc
+6 silly config load:file:/etc/npmrc
+7 verbose title npm install node-linux-x64@20.20.2
+8 verbose argv "install" "--no-save" "node-linux-x64@20.20.2"
+9 verbose logfile logs-max:10 dir:/home/karabo/projects/authenik8-core/.npm/_logs/2026-06-12T21_29_57_415Z-
+10 verbose logfile /home/karabo/projects/authenik8-core/.npm/_logs/2026-06-12T21_29_57_415Z-debug-0.log
+11 silly logfile start cleaning logs, removing 1 files
+12 silly logfile done cleaning log files
+13 silly packumentCache heap:2248146944 maxSize:562036736 maxEntrySize:281018368
+14 silly idealTree buildDeps
+15 silly fetch manifest node-bin-setup@^1.0.0
+16 silly packumentCache full:https://registry.npmjs.org/node-bin-setup cache-miss
+17 http cache https://registry.npmjs.org/node-bin-setup 19ms (cache hit)
+18 silly packumentCache full:https://registry.npmjs.org/node-bin-setup set size:17527 disposed:false
+19 silly fetch manifest node-linux-x64@20.20.2
+20 silly packumentCache full:https://registry.npmjs.org/node-linux-x64 cache-miss
+21 http fetch GET 200 https://registry.npmjs.org/node-linux-x64 503ms (cache miss)
+22 silly packumentCache full:https://registry.npmjs.org/node-linux-x64 set size:undefined disposed:false
+23 silly placeDep ROOT node-bin-setup@1.1.4 OK for: node@20.20.2 want: ^1.0.0
+24 silly placeDep ROOT node-linux-x64@20.20.2 OK for: node@20.20.2 want: 20.20.2
+25 silly reify moves {}
+26 silly audit bulk request { 'node-bin-setup': [ '1.1.4' ], 'node-linux-x64': [ '20.20.2' ] }
+27 http cache node-linux-x64@https://registry.npmjs.org/node-linux-x64/-/node-linux-x64-20.20.2.tgz 1ms (cache hit)
+28 http cache node-bin-setup@https://registry.npmjs.org/node-bin-setup/-/node-bin-setup-1.1.4.tgz 0ms (cache hit)
+29 silly tarball no local data for node-linux-x64@https://registry.npmjs.org/node-linux-x64/-/node-linux-x64-20.20.2.tgz. Extracting by manifest.
+30 http fetch POST 200 https://registry.npmjs.org/-/npm/v1/security/advisories/bulk 378ms
+31 silly audit report {}
+32 http fetch GET 200 https://registry.npmjs.org/node-linux-x64/-/node-linux-x64-20.20.2.tgz 12549ms (cache miss)
+33 silly ADD node_modules/node-linux-x64
+34 silly ADD node_modules/node-bin-setup
+35 verbose cwd /home/karabo/projects/authenik8-core/.npm/_npx/ebaba8b9e55fd0a9/node_modules/node
+36 verbose os Linux 7.0.11-arch1-1
+37 verbose node v26.2.0
+38 verbose npm  v11.16.0
+39 verbose exit 0
+40 info ok

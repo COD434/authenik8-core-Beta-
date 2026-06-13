@@ -46,44 +46,39 @@ const getRedisConfig = (options) => {
 };
 exports.getRedisConfig = getRedisConfig;
 const setupRedis = async (options) => {
-    try {
-        const config = getRedisConfig(options?.redisConfig);
-        const storeOptions = { ...DEFAULT_STORE_OPTIONS, ...options?.storeOptions };
-        const redisClient = new ioredis_1.default({
-            host: config.host,
-            port: Number(config.port),
-            connectTimeout: config.connectTimeout,
-            password: config.password,
-            retryStrategy: (times) => Math.min(times * 50, 2000),
-            maxRetriesPerRequest: config.maxRetriesPerRequest
-        });
-        await new Promise((resolve, reject) => {
-            redisClient.once("ready", async () => {
-                try {
-                    await redisClient.ping();
-                    resolve();
-                }
-                catch (err) {
-                    reject(err);
-                }
-            });
-            redisClient.once("error", (err) => {
+    const config = getRedisConfig(options?.redisConfig);
+    const storeOptions = { ...DEFAULT_STORE_OPTIONS, ...options?.storeOptions };
+    const redisClient = new ioredis_1.default({
+        host: config.host,
+        port: Number(config.port),
+        connectTimeout: config.connectTimeout,
+        password: config.password,
+        retryStrategy: (times) => Math.min(times * 50, 2000),
+        maxRetriesPerRequest: config.maxRetriesPerRequest
+    });
+    await new Promise((resolve, reject) => {
+        redisClient.once("ready", async () => {
+            try {
+                await redisClient.ping();
+                resolve();
+            }
+            catch (err) {
                 reject(err);
-            });
+            }
         });
-        const redisStore = new connect_redis_1.RedisStore({
-            client: redisClient,
-            prefix: storeOptions.prefix,
-            ttl: storeOptions.ttl
+        redisClient.once("error", (err) => {
+            reject(err);
         });
-        redisClient.on("error", () => { });
-        redisClient.on("ready", () => { });
-        redisClient.on("reconnecting", () => { });
-        return { redisClient, redisStore };
-    }
-    catch (error) {
-        throw error;
-    }
+    });
+    const redisStore = new connect_redis_1.RedisStore({
+        client: redisClient,
+        prefix: storeOptions.prefix,
+        ttl: storeOptions.ttl
+    });
+    redisClient.on("error", () => { });
+    redisClient.on("ready", () => { });
+    redisClient.on("reconnecting", () => { });
+    return { redisClient, redisStore };
 };
 exports.setupRedis = setupRedis;
 const initializeRedisClient = async () => {

@@ -1,0 +1,46 @@
+0 verbose cli /usr/bin/node /usr/lib/node_modules/npm/bin/npm-cli.js
+1 info using npm@11.16.0
+2 info using node@v26.2.0
+3 silly config load:file:/usr/lib/node_modules/npm/npmrc
+4 silly config load:file:/home/karabo/projects/authenik8-core/.npmrc
+5 silly config load:file:/home/karabo/.npmrc
+6 silly config load:file:/etc/npmrc
+7 verbose title npm exec node@22 node_modules/vitest/vitest.mjs run --config vitest.config.ts
+8 verbose argv "exec" "--yes" "--" "node@22" "node_modules/vitest/vitest.mjs" "run" "--config" "vitest.config.ts"
+9 verbose logfile logs-max:10 dir:/home/karabo/projects/authenik8-core/.npm/_logs/2026-06-12T21_30_53_876Z-
+10 verbose logfile /home/karabo/projects/authenik8-core/.npm/_logs/2026-06-12T21_30_53_876Z-debug-0.log
+11 silly logfile start cleaning logs, removing 1 files
+12 silly logfile done cleaning log files
+13 silly packumentCache heap:2248146944 maxSize:562036736 maxEntrySize:281018368
+14 verbose shrinkwrap failed to load node_modules/.package-lock.json out of date, updated: node_modules
+15 http fetch GET 200 https://registry.npmjs.org/node 136ms (cache revalidated)
+16 silly packumentCache heap:2248146944 maxSize:562036736 maxEntrySize:281018368
+17 silly packumentCache heap:2248146944 maxSize:562036736 maxEntrySize:281018368
+18 verbose shrinkwrap failed to load node_modules/.package-lock.json missing from lockfile: node_modules/node/node_modules/node-bin-setup
+19 silly idealTree buildDeps
+20 silly fetch manifest node@22.22.3
+21 silly packumentCache full:https://registry.npmjs.org/node cache-miss
+22 http cache https://registry.npmjs.org/node 21ms (cache hit)
+23 silly packumentCache full:https://registry.npmjs.org/node set size:1303996 disposed:false
+24 silly placeDep ROOT node@22.22.3 REPLACE for:  want: 22.22.3
+25 silly reify mark retired [
+25 silly reify   '/home/karabo/projects/authenik8-core/.npm/_npx/52027bd8fc0022aa/node_modules/node/node_modules/node-bin-setup'
+25 silly reify ]
+26 silly reify mark retired [
+26 silly reify   '/home/karabo/projects/authenik8-core/.npm/_npx/52027bd8fc0022aa/node_modules/node/node_modules/node-linux-x64',
+26 silly reify   '/home/karabo/projects/authenik8-core/.npm/_npx/52027bd8fc0022aa/node_modules/node/node_modules/.bin/node'
+26 silly reify ]
+27 silly reify moves {
+27 silly reify   '/home/karabo/projects/authenik8-core/.npm/_npx/52027bd8fc0022aa/node_modules/node/node_modules/node-bin-setup': '/home/karabo/projects/authenik8-core/.npm/_npx/52027bd8fc0022aa/node_modules/node/node_modules/.node-bin-setup-vOcT1jL2',
+27 silly reify   '/home/karabo/projects/authenik8-core/.npm/_npx/52027bd8fc0022aa/node_modules/node/node_modules/node-linux-x64': '/home/karabo/projects/authenik8-core/.npm/_npx/52027bd8fc0022aa/node_modules/node/node_modules/.node-linux-x64-jWhj8Iwy',
+27 silly reify   '/home/karabo/projects/authenik8-core/.npm/_npx/52027bd8fc0022aa/node_modules/node/node_modules/.bin/node': '/home/karabo/projects/authenik8-core/.npm/_npx/52027bd8fc0022aa/node_modules/node/node_modules/.bin/.node-gGpImquP'
+27 silly reify }
+28 silly audit bulk request { 'node-bin-setup': [ '1.1.4' ], node: [ '22.22.3' ] }
+29 http fetch POST 200 https://registry.npmjs.org/-/npm/v1/security/advisories/bulk 391ms
+30 silly audit report {}
+31 verbose cwd /home/karabo/projects/authenik8-core
+32 verbose os Linux 7.0.11-arch1-1
+33 verbose node v26.2.0
+34 verbose npm  v11.16.0
+35 verbose exit 0
+36 info ok

@@ -3,7 +3,9 @@ import { setupRedis, initializeRedisClient, validateRedisConfig, getRedisConfig 
 
 
 vi.mock('connect-redis', () => ({
-  RedisStore: vi.fn().mockImplementation(() => ({ mockStore: true })),
+  RedisStore: vi.fn().mockImplementation(function () {
+    return { mockStore: true };
+  }),
 }));
 
 // We need full control over the Redis instance's event emitter
@@ -34,7 +36,7 @@ function makeMockRedis(behavior: 'ready' | 'error' = 'ready') {
 }
 
 vi.mock('ioredis', () => {
-  const RedisMock = vi.fn(() => {
+  const RedisMock = vi.fn(function () {
     currentMockRedis = makeMockRedis();
     return currentMockRedis;
   });
@@ -118,7 +120,7 @@ describe('getRedisConfig', () => {
 
 describe('setupRedis', () => {
   it('resolves with redisClient and redisStore on success', async () => {
-    vi.mocked(Redis).mockImplementationOnce(() => {
+    vi.mocked(Redis).mockImplementationOnce(function () {
       currentMockRedis = makeMockRedis('ready');
       return currentMockRedis as any;
     });
@@ -130,7 +132,7 @@ describe('setupRedis', () => {
   });
 
   it('calls ping after ready event fires', async () => {
-    vi.mocked(Redis).mockImplementationOnce(() => {
+    vi.mocked(Redis).mockImplementationOnce(function () {
       currentMockRedis = makeMockRedis('ready');
       return currentMockRedis as any;
     });
@@ -141,7 +143,7 @@ describe('setupRedis', () => {
   });
 
   it('registers on("error"), on("ready"), on("reconnecting") listeners', async () => {
-    vi.mocked(Redis).mockImplementationOnce(() => {
+    vi.mocked(Redis).mockImplementationOnce(function () {
       currentMockRedis = makeMockRedis('ready');
       return currentMockRedis as any;
     });
@@ -155,7 +157,7 @@ describe('setupRedis', () => {
   });
 
   it('rejects and rethrows when Redis emits an error event', async () => {
-    vi.mocked(Redis).mockImplementationOnce(() => {
+    vi.mocked(Redis).mockImplementationOnce(function () {
       currentMockRedis = makeMockRedis('error');
       return currentMockRedis as any;
     });
@@ -164,7 +166,7 @@ describe('setupRedis', () => {
   });
 
   it('rejects when ping throws after ready', async () => {
-    vi.mocked(Redis).mockImplementationOnce(() => {
+    vi.mocked(Redis).mockImplementationOnce(function () {
       const instance = makeMockRedis('ready');
       instance.ping.mockRejectedValueOnce(new Error('ping failed'));
       currentMockRedis = instance;
@@ -175,7 +177,7 @@ describe('setupRedis', () => {
   });
 
   it('merges custom storeOptions with defaults', async () => {
-    vi.mocked(Redis).mockImplementationOnce(() => {
+    vi.mocked(Redis).mockImplementationOnce(function () {
       currentMockRedis = makeMockRedis('ready');
       return currentMockRedis as any;
     });
@@ -189,7 +191,7 @@ describe('setupRedis', () => {
   });
 
   it('passes password to Redis constructor when provided', async () => {
-    vi.mocked(Redis).mockImplementationOnce(() => {
+    vi.mocked(Redis).mockImplementationOnce(function () {
       currentMockRedis = makeMockRedis('ready');
       return currentMockRedis as any;
     });
@@ -205,7 +207,7 @@ describe('setupRedis', () => {
 
 describe('initializeRedisClient', () => {
   it('returns a Redis client', async () => {
-    vi.mocked(Redis).mockImplementationOnce(() => {
+    vi.mocked(Redis).mockImplementationOnce(function () {
       currentMockRedis = makeMockRedis('ready');
       return currentMockRedis as any;
     });

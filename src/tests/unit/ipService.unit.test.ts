@@ -4,12 +4,16 @@ import type { Request, Response, NextFunction } from 'express';
 
 
 vi.mock('ioredis', () => {
-  const Redis = vi.fn(() => mockRedis);
+  const Redis = vi.fn(function () {
+    return mockRedis;
+  });
   return { default: Redis };
 });
 
 vi.mock('rate-limiter-flexible', () => ({
-  RateLimiterRedis: vi.fn(() => mockRateLimiter),
+  RateLimiterRedis: vi.fn(function () {
+    return mockRateLimiter;
+  }),
 }));
 
 vi.mock('ip-address', async(importOriginal) => {

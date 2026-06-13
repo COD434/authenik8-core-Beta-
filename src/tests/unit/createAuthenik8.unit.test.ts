@@ -51,15 +51,21 @@ vi.mock('../../redis/redisService', () => ({
 }));
 
 vi.mock('../../storage/RedisTokenStore', () => ({
-  RedisTokenStore: vi.fn().mockImplementation(() => mockTokenStore),
+  RedisTokenStore: vi.fn().mockImplementation(function () {
+    return mockTokenStore;
+  }),
 }));
 
 vi.mock('../../auth/refreshService', () => ({
-  RefreshService: vi.fn().mockImplementation(() => mockRefreshService),
+  RefreshService: vi.fn().mockImplementation(function () {
+    return mockRefreshService;
+  }),
 }));
 
 vi.mock('../../auth/jwtAuth', () => ({
-  JWTService: vi.fn().mockImplementation(() => mockJwtService),
+  JWTService: vi.fn().mockImplementation(function () {
+    return mockJwtService;
+  }),
 }));
 
 vi.mock('../../auth/guestModeService', () => ({
@@ -71,7 +77,9 @@ vi.mock('../../middleware/adminService', () => ({
 }));
 
 vi.mock('../../security/ipService', () => ({
-  SecurityModule: vi.fn().mockImplementation(() => mockSecurity),
+  SecurityModule: vi.fn().mockImplementation(function () {
+    return mockSecurity;
+  }),
 }));
 
 vi.mock('../../oauth/core', () => ({

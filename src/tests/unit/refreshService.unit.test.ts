@@ -14,7 +14,9 @@ const mockLockInstance = {
 };
 
 vi.mock('../../utility/lockHelper', () => ({
-  RedisLock: vi.fn(() => mockLockInstance),
+  RedisLock: vi.fn(function () {
+    return mockLockInstance;
+  }),
 }));
 
 describe('RefreshService', () => {
