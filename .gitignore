@@ -5,7 +5,7 @@ coverage/
 reports/
 **/*.html
 coverage/
-
+.npm
 
 dump.rdb
 *.rdb
