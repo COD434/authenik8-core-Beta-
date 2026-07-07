@@ -2,18 +2,12 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { TokenBucket, createRatelimiter, initializeRateLimiter } from '../../security/limiter';
 import type { Request, Response, NextFunction } from 'express';
 
-const { mockRedis, mockPipeline,mockRateLimiter } = vi.hoisted(() => {
-  const mockPipeline = {
-    hgetall: vi.fn().mockReturnThis(),
-    exec: vi.fn(),
-  };
+const { mockRedis,mockRateLimiter } = vi.hoisted(() => {
   const mockRedis = {
-    pipeline: vi.fn(() => mockPipeline),
-    hset: vi.fn().mockResolvedValue(1),
-    expire: vi.fn().mockResolvedValue(1),
+    eval: vi.fn().mockResolvedValue([1, 4, 0]),
   };
   const mockRateLimiter = { consume: vi.fn() };
-  return { mockRedis, mockPipeline,mockRateLimiter };
+  return { mockRedis,mockRateLimiter };
 });
 
 
@@ -42,12 +36,9 @@ const mockRes = () => {
 
 const next = vi.fn() as NextFunction;
 
-function makeBucketState(tokens: number, lastRefill: number) {
-  return [[null, { tokens: tokens.toString(), lastRefill: lastRefill.toString() }]];
-}
-
 beforeEach(() => {
   vi.clearAllMocks();
+  mockRedis.eval.mockResolvedValue([1, 4, 0]);
 });
 
 
@@ -59,30 +50,35 @@ describe('TokenBucket', () => {
   });
 
   it('allows request when tokens are available', async () => {
-    mockPipeline.exec.mockResolvedValue(makeBucketState(5, Date.now()));
+    mockRedis.eval.mockResolvedValue([1, 4, 0]);
 
     const result = await bucket.consume('test-key', 10, 1);
 
     expect(result.allowed).toBe(true);
     expect(result.remaining).toBeGreaterThanOrEqual(0);
-    expect(mockRedis.hset).toHaveBeenCalled();
+    expect(mockRedis.eval).toHaveBeenCalledWith(
+      expect.any(String),
+      1,
+      'rate_limit:test-key',
+      '10',
+      '1',
+      expect.any(String),
+      '3600'
+    );
   });
 
   it('denies request when tokens are exhausted', async () => {
-    mockPipeline.exec.mockResolvedValue(makeBucketState(0.5, Date.now()));
+    mockRedis.eval.mockResolvedValue([0, 0, 1]);
 
     const result = await bucket.consume('test-key', 10, 1);
 
     expect(result.allowed).toBe(false);
     expect(result.remaining).toBe(0);
     expect(result.retryAfter).toBeGreaterThan(0);
-    expect(mockRedis.hset).not.toHaveBeenCalled();
   });
 
   it('refills tokens based on elapsed time', async () => {
-    const fiveSecondsAgo = Date.now() - 5000;
-    // Start with 0 tokens, refillRate=2/s → should refill 10 tokens over 5s
-    mockPipeline.exec.mockResolvedValue(makeBucketState(0, fiveSecondsAgo));
+    mockRedis.eval.mockResolvedValue([1, 9, 0]);
 
     const result = await bucket.consume('test-key', 10, 2);
 
@@ -90,8 +86,7 @@ describe('TokenBucket', () => {
   });
 
   it('caps refilled tokens at capacity', async () => {
-    const longAgo = Date.now() - 99999000;
-    mockPipeline.exec.mockResolvedValue(makeBucketState(0, longAgo));
+    mockRedis.eval.mockResolvedValue([1, 4, 0]);
 
     const result = await bucket.consume('test-key', 5, 10);
 
@@ -100,16 +95,7 @@ describe('TokenBucket', () => {
   });
 
   it('uses capacity as default when bucket state is empty', async () => {
-    mockPipeline.exec.mockResolvedValue([[null, {}]]);
-
-    const result = await bucket.consume('test-key', 10, 1);
-
-    expect(result.allowed).toBe(true);
-    expect(mockRedis.hset).toHaveBeenCalled();
-  });
-
-  it('handles null pipeline result gracefully', async () => {
-    mockPipeline.exec.mockResolvedValue(null);
+    mockRedis.eval.mockResolvedValue([1, 9, 0]);
 
     const result = await bucket.consume('test-key', 10, 1);
 
@@ -117,11 +103,19 @@ describe('TokenBucket', () => {
   });
 
   it('sets expiry on the rate limit key after consuming', async () => {
-    mockPipeline.exec.mockResolvedValue(makeBucketState(5, Date.now()));
+    mockRedis.eval.mockResolvedValue([1, 4, 0]);
 
     await bucket.consume('test-key', 10, 1);
 
-    expect(mockRedis.expire).toHaveBeenCalledWith('rate_limit:test-key', 3600);
+    expect(mockRedis.eval).toHaveBeenCalledWith(
+      expect.any(String),
+      1,
+      'rate_limit:test-key',
+      '10',
+      '1',
+      expect.any(String),
+      '3600'
+    );
   });
 });
 
@@ -142,7 +136,7 @@ describe('createRatelimiter', () => {
   };
 
   it('calls next() when request is allowed', async () => {
-    mockPipeline.exec.mockResolvedValue(makeBucketState(5, Date.now()));
+    mockRedis.eval.mockResolvedValue([1, 4, 0]);
     await initializeRateLimiter(); // prime the singleton
 
     const middleware = createRatelimiter(config);
@@ -152,7 +146,7 @@ describe('createRatelimiter', () => {
   });
 
   it('returns 429 when request is denied', async () => {
-    mockPipeline.exec.mockResolvedValue(makeBucketState(0.5, Date.now()));
+    mockRedis.eval.mockResolvedValue([0, 0, 1]);
     await initializeRateLimiter();
 
     const middleware = createRatelimiter(config);
@@ -165,7 +159,7 @@ describe('createRatelimiter', () => {
   });
 
   it('sets X-RateLimit headers on every response', async () => {
-    mockPipeline.exec.mockResolvedValue(makeBucketState(5, Date.now()));
+    mockRedis.eval.mockResolvedValue([1, 4, 0]);
     await initializeRateLimiter();
 
     const middleware = createRatelimiter(config);
@@ -181,7 +175,7 @@ describe('createRatelimiter', () => {
   });
 
   it('sets Retry-After header when denied', async () => {
-    mockPipeline.exec.mockResolvedValue(makeBucketState(0.5, Date.now()));
+    mockRedis.eval.mockResolvedValue([0, 0, 1]);
     await initializeRateLimiter();
 
     const middleware = createRatelimiter(config);
@@ -210,7 +204,7 @@ describe('createRatelimiter', () => {
   });
 
   it('uses keyGenerator output as the bucket key', async () => {
-    mockPipeline.exec.mockResolvedValue(makeBucketState(5, Date.now()));
+    mockRedis.eval.mockResolvedValue([1, 4, 0]);
     await initializeRateLimiter();
 
     const customConfig = {
@@ -220,9 +214,14 @@ describe('createRatelimiter', () => {
     const middleware = createRatelimiter(customConfig);
     await middleware(mockReq({ body: { email: 'user@example.com' } }), mockRes(), next);
 
-    expect(mockRedis.hset).toHaveBeenCalledWith(
+    expect(mockRedis.eval).toHaveBeenCalledWith(
+      expect.any(String),
+      1,
       'rate_limit:user@example.com',
-      expect.any(Object)
+      '10',
+      '2',
+      expect.any(String),
+      '3600'
     );
   });
 });

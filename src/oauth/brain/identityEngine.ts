@@ -1,10 +1,10 @@
-import { OAuthProfile } from "../types";
-import { memoryAdapter } from "../adapters/memoryAdapter";
-import { IdentityEngine } from "./types";
+import { IdentityEngine } from "../types";
 import { IdentityContext, IdentityResult } from "../identity/types";
-import {identityPolicy} from "./identityPolicy";
+import { identityPolicy } from "./identityPolicy";
+import { randomUUID } from "crypto";
 
 const auditLogs: any[] = [];
+
 type IdentityAdapter = {
   findUserByEmail(email: string): Promise<any>;
   findUserByProvider(provider: string, providerId: string): Promise<any>;
@@ -20,148 +20,137 @@ type IdentityAdapter = {
   ): Promise<void>;
 };
 
-
 type TokenService = {
-  signAccessToken(payload: any):Promise<string> | string;
+  signAccessToken(payload: any): Promise<string> | string;
   generateRefreshToken(payload: any): Promise<string>;
 };
 
-
 export function createIdentityEngine(
-	adapter:IdentityAdapter,
-  tokenService:TokenService
+  adapter: IdentityAdapter,
+  tokenService: TokenService
 ): IdentityEngine {
   return {
-    async resolveOAuth(args):Promise<IdentityResult>{
-	    const ctx:IdentityContext = {
-	    email: args.profile.email, 
-	    provider:args.profile.provider,
-	    providerId:args.profile.providerId,
-	    mode:args.mode,
-	    userId: args.userId ?? undefined,
-	    }
-	    
-if (!ctx.email) {
-  throw new Error("OAuth profile missing email");
-}
-      // 1. Existing provider
+    async resolveOAuth(args): Promise<IdentityResult> {
+      const ctx: IdentityContext = {
+        email: args.profile.email,
+        provider: args.profile.provider,
+        providerId: args.profile.providerId,
+        mode: args.mode,
+        userId: args.userId ?? undefined,
+      };
+
+      if (!ctx.email) {
+        throw new Error("OAuth profile missing email");
+      }
+
+      if (!ctx.providerId) {
+        throw new Error("Missing providerId");
+      }
+
       const existingProvider = await adapter.findUserByProvider(
         ctx.provider,
         ctx.providerId
       );
 
-	      if (existingProvider) {
-	const payload ={
-		userId:existingProvider.id,
-		email: existingProvider.email,
-	}
-	        return {
-		type:"EXISTING_PROVIDER_LOGIN",
-	          user: existingProvider,
-accessToken:await tokenService.signAccessToken(payload),
-refreshToken: await tokenService.generateRefreshToken(payload),
+      if (existingProvider) {
+        return {
+          type: "EXISTING_PROVIDER_LOGIN",
+          user: existingProvider,
+          ...(await issueTokensForUser(existingProvider, tokenService)),
         };
       }
 
-      // 2. LINK FLOW
       if (ctx.mode === "link") {
-
         if (!ctx.userId) {
-		return{
-		
-		type:"INVALID_LINK_REQUEST",
-		message:"Missing authenticated user for linking",
-		}
+          return {
+            type: "INVALID_LINK_REQUEST",
+            message: "Missing authenticated user for linking",
+          };
         }
-	if (existingProvider && existingProvider.id !== ctx.userId) {
-    throw new Error("Provider already linked to another user");
-  }
 
-        await adapter.linkProvider(
-		ctx.userId, 
-		ctx.provider,
-		ctx.providerId
-	);
-	let user = await adapter.findUserByEmail(ctx.email);
+        await adapter.linkProvider(ctx.userId, ctx.provider, ctx.providerId);
 
-	if (!user) {
-  user = await adapter.findUserByProvider(ctx.provider, ctx.providerId);
-}
-if (!user) {
-  throw new Error("LINK_PROVIDER: user resolution failed");
-}
-	auditLogs.push({
-  userId: user.id,
-  action: "PROVIDER_LINKED",
-  timestamp: Date.now(),
-});
-        return{
-	type: "LINK_PROVIDER",
-	user,
-	success: true,
-	}
+        const user =
+          (await adapter.findUserByEmail(ctx.email)) ??
+          (await adapter.findUserByProvider(ctx.provider, ctx.providerId));
+
+        if (!user) {
+          throw new Error("LINK_PROVIDER: user resolution failed");
+        }
+
+        auditLogs.push({
+          userId: user.id,
+          action: "PROVIDER_LINKED",
+          timestamp: Date.now(),
+        });
+
+        return {
+          type: "LINK_PROVIDER",
+          user,
+          success: true,
+        };
       }
 
-      // 3. Check existing by email OR provider (idempotency safety)
+      const existingUser = await adapter.findUserByEmail(ctx.email);
 
-let existingUser = await adapter.findUserByEmail(ctx.email);
+      if (existingUser) {
+        if (!canAutoLink(args.profile.email_verified)) {
+          return {
+            type: "LINK_REQUIRED",
+            message: "please link manually",
+            email: ctx.email,
+            provider: ctx.provider,
+          };
+        }
 
+        return {
+          type: "EXISTING_PROVIDER_LOGIN",
+          user: existingUser,
+          ...(await issueTokensForUser(existingUser, tokenService)),
+        };
+      }
 
-if (existingUser) {
-		const isVerified = args.profile.email_verified === true || args.profile.email_verified === "true";
+      const user = await adapter.createUser({
+        email: ctx.email,
+        provider: ctx.provider,
+        providerId: ctx.providerId,
+      });
 
-const canAutoLink = (isVerified && identityPolicy.autoLinkOnVerifiedEmailMatch) || (!isVerified && identityPolicy.allowUnverifiedAutoLink) 
-
-if(!canAutoLink){
-	return{
-		type:"LINK_REQUIRED",
-		message:"please link manually",
-		email: ctx.email,
-		provider:ctx.provider,
-
-	}
-}
-	  const oauthPayload = {
-	    userId: existingUser.id,
-	    email: existingUser.email,
-	  };
-
-	  return {
-	    type: "EXISTING_PROVIDER_LOGIN",
-	    user: existingUser,
-	    accessToken: await tokenService.signAccessToken(oauthPayload),
-	    refreshToken: await tokenService.generateRefreshToken(oauthPayload),
-	  };
-
-	}
-
-
-      // 4. Create new user
-       const user = await adapter.createUser({
-          email:ctx.email,
-          provider:ctx.provider,
-          providerId:ctx.providerId,
-});
-    if (!ctx.providerId) {
-  throw new Error("Missing providerId");
-}
-
-const payload = {
-  userId: user.id,
-  email: user.email,
-};
-auditLogs.push({
-  userId: user.id,
-  action: "USER_CREATED",
-  timestamp: Date.now(),
-});
+      auditLogs.push({
+        userId: user.id,
+        action: "USER_CREATED",
+        timestamp: Date.now(),
+      });
 
       return {
-	      type:"NEW_USER_CREATION",
+        type: "NEW_USER_CREATION",
         user,
-        accessToken: await tokenService.signAccessToken(payload),
-	refreshToken:await tokenService.generateRefreshToken(payload)
+        ...(await issueTokensForUser(user, tokenService)),
       };
     },
   };
 }
+
+const canAutoLink = (emailVerified: boolean | string): boolean => {
+  const isVerified = emailVerified === true || emailVerified === "true";
+  return (
+    (isVerified && identityPolicy.autoLinkOnVerifiedEmailMatch) ||
+    (!isVerified && identityPolicy.allowUnverifiedAutoLink)
+  );
+};
+
+const issueTokensForUser = async (
+  user: { id: string; email: string },
+  tokenService: TokenService
+) => {
+  const payload = {
+    userId: user.id,
+    email: user.email,
+    sessionId: randomUUID(),
+  };
+
+  return {
+    accessToken: await tokenService.signAccessToken(payload),
+    refreshToken: await tokenService.generateRefreshToken(payload),
+  };
+};

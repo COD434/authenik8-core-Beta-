@@ -21,10 +21,9 @@ export const createTestApp = async () => {
   app.use(express.json());
 
   app.post("/login", async (_req, res) => {
-    const accessToken = auth.signToken(user);
-    const refreshToken = await auth.generateRefreshToken(user);
+    const tokens = await auth.issueTokens(user);
 
-    res.json({ accessToken, refreshToken });
+    res.json(tokens);
   });
 
   app.get("/protected", (req, res) => {

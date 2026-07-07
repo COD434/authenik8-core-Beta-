@@ -1,120 +1,136 @@
 import dotenv from "dotenv";
-import {RedisStore}  from "connect-redis";
-import Redis ,{ Redis as RedisCon }from "ioredis";
+import { RedisStore } from "connect-redis";
+import Redis, { Redis as RedisCon, RedisOptions } from "ioredis";
 dotenv.config();
 
-
-
-
-interface RedisConfig{
-url?: string;
-host?: string 
-port?: number;
-password?: string;
-maxRetriesPerRequest?:number;
-connectTimeout: number;
+interface RedisConfig {
+  url?: string;
+  host?: string;
+  port?: number;
+  password?: string;
+  maxRetriesPerRequest?: number;
+  connectTimeout: number;
+  tls?: RedisOptions["tls"];
 }
 
-interface RedisStoreOptions{
-prefix?: string;
-ttl?: number;
+interface RedisStoreOptions {
+  prefix?: string;
+  ttl?: number;
 }
 
-interface SetupRedisOptions{
-redisConfig?: Partial<RedisConfig>;
-storeOptions?:Partial<RedisStoreOptions>;
+interface SetupRedisOptions {
+  redisConfig?: Partial<RedisConfig>;
+  storeOptions?: Partial<RedisStoreOptions>;
 }
 
-let redisClientInstance:RedisCon | null = null
-let redisStoreInstance:RedisStore |null = null
+let redisClientInstance: RedisCon | null = null;
 
 const DEFAULT_REDIS_CONFIG: RedisConfig = {
-host:process.env.REDIS_HOST ?? "127.0.0.1",
-port: Number(process.env.REDIS_PORT ?? "6379"),
-maxRetriesPerRequest: 10,
-connectTimeout: 5000
-}
+  host: process.env.REDIS_HOST ?? "127.0.0.1",
+  port: Number(process.env.REDIS_PORT ?? "6379"),
+  maxRetriesPerRequest: 10,
+  connectTimeout: 5000,
+};
 
-const DEFAULT_STORE_OPTIONS : RedisStoreOptions = {
-prefix: "session",
-ttl: 86400
-}
+const DEFAULT_STORE_OPTIONS: RedisStoreOptions = {
+  prefix: "session",
+  ttl: 86400,
+};
 
-const validateRedisConfig = (config:RedisConfig) => {
+const validateRedisConfig = (config: RedisConfig) => {
   if (!config.url && !config.host) {
     throw new Error("Redis configuration requires either URL or host/port");
   }
-  
-  if (config.url && !config.url.startsWith("redis://")  &&  !config.url.startsWith("rediss://")
-     ) {
-    throw new Error("Redis URL must use 'redis://' protocol");
+
+  if (
+    config.url &&
+    !config.url.startsWith("redis://") &&
+    !config.url.startsWith("rediss://")
+  ) {
+    throw new Error("Redis URL must use 'redis://' or 'rediss://' protocol");
   }
 };
 
- const getRedisConfig = (options?:Partial<RedisConfig>):  RedisConfig => {
- const port = options?.port ?
-	 Number(options.port) :
-	 process.env.REDIS_PORT ? Number(process.env.REDIS_PORT) : 
-	 Number(DEFAULT_REDIS_CONFIG.port);
+const getRedisConfig = (options?: Partial<RedisConfig>): RedisConfig => {
+  const port = options?.port
+    ? Number(options.port)
+    : process.env.REDIS_PORT
+      ? Number(process.env.REDIS_PORT)
+      : Number(DEFAULT_REDIS_CONFIG.port);
 
-const config: RedisConfig = {
-...DEFAULT_REDIS_CONFIG,	  
-    host: options?.host || process.env.REDIS_HOST|| DEFAULT_REDIS_CONFIG.host,
-    port: port,
-    password: options?.password || process.env.REDIS_PASSWORD|| undefined,
+  const config: RedisConfig = {
+    ...DEFAULT_REDIS_CONFIG,
+    host: options?.host || process.env.REDIS_HOST || DEFAULT_REDIS_CONFIG.host,
+    port,
+    password: options?.password || process.env.REDIS_PASSWORD || undefined,
     ...options
   };
+
   validateRedisConfig(config);
   return config;
 };
 
 const setupRedis = async (options?: SetupRedisOptions) => {
-			const config = getRedisConfig(options?.redisConfig);
-			const storeOptions = {...DEFAULT_STORE_OPTIONS, ...options?.storeOptions}
-    
-    const redisClient = new Redis({
-    host: config.host as string,
-    port:Number(config.port) ,
-    connectTimeout:config.connectTimeout,
-    password :config.password,
-    retryStrategy:(times:number)=> Math.min(times * 50,2000),
-    maxRetriesPerRequest:config.maxRetriesPerRequest
+  const config = getRedisConfig(options?.redisConfig);
+  const storeOptions = { ...DEFAULT_STORE_OPTIONS, ...options?.storeOptions };
+  const redisOptions = buildRedisOptions(config);
+  const redisClient = config.url
+    ? new Redis(config.url, redisOptions)
+    : new Redis({
+        ...redisOptions,
+        host: config.host as string,
+        port: Number(config.port),
+      });
+
+  await waitForRedisReady(redisClient);
+
+  const redisStore = new RedisStore({
+    client: redisClient,
+    prefix: storeOptions.prefix,
+    ttl: storeOptions.ttl,
+  });
+
+  redisClient.on("error", () => {});
+  redisClient.on("ready", () => {});
+  redisClient.on("reconnecting", () => {});
+
+  return { redisClient, redisStore };
+};
+
+const initializeRedisClient = async () => {
+  if (!redisClientInstance) {
+    const { redisClient } = await setupRedis();
+    redisClientInstance = redisClient;
+  }
+
+  return redisClientInstance;
+};
+
+const buildRedisOptions = (config: RedisConfig): RedisOptions => ({
+  connectTimeout: config.connectTimeout,
+  password: config.password,
+  retryStrategy: (times: number) => Math.min(times * 50, 2000),
+  maxRetriesPerRequest: config.maxRetriesPerRequest,
+  ...(config.tls ? { tls: config.tls } : {}),
+  ...(config.url?.startsWith("rediss://") && !config.tls ? { tls: {} } : {}),
+});
+
+const waitForRedisReady = async (redisClient: RedisCon): Promise<void> => {
+  await new Promise<void>((resolve, reject) => {
+    redisClient.once("ready", async () => {
+      try {
+        await redisClient.ping();
+        resolve();
+      } catch (err) {
+        reject(err);
+      }
     });
 
-      await new Promise<void>((resolve, reject)=>{
-	      redisClient.once("ready", async () =>{
-	      try{
-	      await redisClient.ping();
-	      resolve();
-      }catch(err){
+    redisClient.once("error", (err) => {
       reject(err);
-       }
-      })
-      redisClient.once("error",(err)=>{
-      reject(err);
-       })
-      });
-      
-      const redisStore = new RedisStore({
-      client: redisClient,
-      prefix:storeOptions.prefix,
-      ttl:storeOptions.ttl
-      });
-
-    
-    redisClient.on("error", () => {});
-    redisClient.on("ready", () => {});
-    redisClient.on("reconnecting", () => {});
-
-    return{ redisClient, redisStore };
-};
-const initializeRedisClient =async () => {
-if(!redisClientInstance){
-const {redisClient} = await setupRedis();
-redisClientInstance= redisClient;
-}
-return redisClientInstance
+    });
+  });
 };
 
-export {setupRedis, initializeRedisClient,validateRedisConfig, getRedisConfig};
-export type {RedisConfig, RedisStoreOptions, SetupRedisOptions}
+export { setupRedis, initializeRedisClient, validateRedisConfig, getRedisConfig };
+export type { RedisConfig, RedisStoreOptions, SetupRedisOptions };

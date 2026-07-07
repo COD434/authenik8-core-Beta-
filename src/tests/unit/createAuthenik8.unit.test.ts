@@ -43,7 +43,6 @@ import { createRedisIdentityAdapter } from '../../oauth/adapters/redisAdapter';
 import { JWTService } from '../../auth/jwtAuth';
 import { initializeRedisClient } from '../../redis/redisService';
 import { createAuthenik8 } from '../../createAuthenik8';
-import type { Provider } from '../../oauth/userStore';
 
 
 vi.mock('../../redis/redisService', () => ({
@@ -125,8 +124,8 @@ describe('createAuthenik8', () => {
       requireAdmin: expect.any(Function),
       incognito: expect.any(Function),
       issueTokens: expect.any(Function),
-      issueTokensFromProfile: expect.any(Function),
     });
+    expect(instance).not.toHaveProperty('issueTokensFromProfile');
   });
 
   it('uses provided redis client instead of initializing one', async () => {
@@ -155,6 +154,9 @@ describe('createAuthenik8', () => {
     });
 
     expect(vi.mocked(createOAuth)).toHaveBeenCalled();
+    expect(vi.mocked(createOAuth)).toHaveBeenCalledWith(
+      expect.objectContaining({ identityEngine: mockIdentityEngine })
+    );
   });
 
   it('leaves oauth undefined when config.oauth is not provided', async () => {
@@ -203,124 +205,15 @@ describe('issueTokens', () => {
 
     await instance.issueTokens({ userId: 'user-1', email: 'test@example.com' });
 
-    expect(mockJwtService.signToken).toHaveBeenCalledWith({
+    expect(mockJwtService.signToken).toHaveBeenCalledWith(expect.objectContaining({
       userId: 'user-1',
       email: 'test@example.com',
-    });
-    expect(mockRefreshService.generateRefreshToken).toHaveBeenCalledWith({
+      sessionId: expect.any(String),
+    }));
+    expect(mockRefreshService.generateRefreshToken).toHaveBeenCalledWith(expect.objectContaining({
       userId: 'user-1',
       email: 'test@example.com',
-    });
-  });
-});
-
-
-describe('issueTokensFromProfile', () => {
-  const verifiedProfile = {
-    email: 'test@example.com',
-    provider: 'google' as Provider,
-    providerId: 'google-123',
-    email_verified: true,
-  };
-
-  it('throws when email is not verified', async () => {
-    const instance = await createAuthenik8(baseConfig);
-
-    await expect(
-      instance.issueTokensFromProfile({ ...verifiedProfile, email_verified: false })
-    ).rejects.toThrow('OAuth profile email must be verified before issuing tokens');
-  });
-
-  it('throws when email_verified is an unrecognised value', async () => {
-    const instance = await createAuthenik8(baseConfig);
-
-    await expect(
-      instance.issueTokensFromProfile({ ...verifiedProfile, email_verified: 'false' as any })
-    ).rejects.toThrow('OAuth profile email must be verified before issuing tokens');
-  });
-
-  it('accepts email_verified as the string "true"', async () => {
-    mockIdentityEngine.resolveOAuth.mockResolvedValue({
-      type: 'EXISTING_PROVIDER_LOGIN',
-      accessToken: 'mock-access-token',
-      refreshToken: 'mock-refresh-token',
-    });
-    const instance = await createAuthenik8(baseConfig);
-
-    const result = await instance.issueTokensFromProfile({
-      ...verifiedProfile,
-      email_verified: 'true',
-    });
-
-    expect(result.accessToken).toBe('mock-access-token');
-  });
-
-  it('returns tokens for EXISTING_PROVIDER_LOGIN', async () => {
-    mockIdentityEngine.resolveOAuth.mockResolvedValue({
-      type: 'EXISTING_PROVIDER_LOGIN',
-      accessToken: 'mock-access-token',
-      refreshToken: 'mock-refresh-token',
-    });
-    const instance = await createAuthenik8(baseConfig);
-
-    const result = await instance.issueTokensFromProfile(verifiedProfile);
-
-    expect(result).toEqual({
-      accessToken: 'mock-access-token',
-      refreshToken: 'mock-refresh-token',
-    });
-  });
-
-  it('returns tokens for NEW_USER_CREATION', async () => {
-    mockIdentityEngine.resolveOAuth.mockResolvedValue({
-      type: 'NEW_USER_CREATION',
-      accessToken: 'mock-access-token',
-      refreshToken: 'mock-refresh-token',
-    });
-    const instance = await createAuthenik8(baseConfig);
-
-    const result = await instance.issueTokensFromProfile(verifiedProfile);
-
-    expect(result.accessToken).toBe('mock-access-token');
-  });
-
-  it('throws the message from LINK_REQUIRED result', async () => {
-    mockIdentityEngine.resolveOAuth.mockResolvedValue({
-      type: 'LINK_REQUIRED',
-      message: 'please link manually',
-    });
-    const instance = await createAuthenik8(baseConfig);
-
-    await expect(
-      instance.issueTokensFromProfile(verifiedProfile)
-    ).rejects.toThrow('please link manually');
-  });
-
-  it('throws generic error for unexpected result types', async () => {
-    mockIdentityEngine.resolveOAuth.mockResolvedValue({
-      type: 'INVALID_LINK_REQUEST',
-    });
-    const instance = await createAuthenik8(baseConfig);
-
-    await expect(
-      instance.issueTokensFromProfile(verifiedProfile)
-    ).rejects.toThrow('OAuth token issuance failed');
-  });
-
-  it('calls resolveOAuth in login mode with null userId', async () => {
-    mockIdentityEngine.resolveOAuth.mockResolvedValue({
-      type: 'EXISTING_PROVIDER_LOGIN',
-      accessToken: 'mock-access-token',
-      refreshToken: 'mock-refresh-token',
-    });
-    const instance = await createAuthenik8(baseConfig);
-
-    await instance.issueTokensFromProfile(verifiedProfile);
-
-    expect(mockIdentityEngine.resolveOAuth).toHaveBeenCalledWith({
-      profile: verifiedProfile,
-      mode: 'login',
-      userId: null,
-    });
+      sessionId: expect.any(String),
+    }));
   });
 });

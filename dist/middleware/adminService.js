@@ -5,41 +5,29 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.requireAdmin = void 0;
 const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
+const sessionStore_1 = require("../auth/sessionStore");
+const ADMIN_ONLY_ERROR = { error: "Forbidden: Admin only" };
+const INVALID_ADMIN_SESSION_ERROR = {
+    error: "Forbidden: invalid admin session",
+};
 const requireAdmin = (options) => {
-    return (req, res, next) => {
-        const authHeader = req.headers.authorization;
-        const cookieToken = req.cookies?.token;
-        let token;
-        if (authHeader && authHeader.startsWith("Bearer")) {
-            token = authHeader.split(" ")[1];
-        }
-        if (!token && cookieToken) {
-            token = cookieToken;
-        }
+    const sessionStore = new sessionStore_1.SessionStore(options.store);
+    return async (req, res, next) => {
+        const token = tokenFromRequest(req, options.allowCookieAuth ?? false);
         if (!token) {
             return res.status(401).json({ error: "Unauthorized:No token provided" });
         }
         try {
             const decoded = jsonwebtoken_1.default.verify(token, options.jwtSecret);
             if (decoded.role !== "admin") {
-                return res.status(403).json({ error: "Forbidden: Admin only" });
+                return res.status(403).json(ADMIN_ONLY_ERROR);
             }
             if (options.store) {
-                req.adminActions = {
-                    listSessions: async (userId) => {
-                        const sessions = await options.store.hgetall(`sessions:${userId}`);
-                        return Object.values(sessions || {}).map((s) => {
-                            const { token, ...meta } = JSON.parse(s);
-                            return meta;
-                        });
-                    },
-                    revokeSession: async (userId, sessionId) => {
-                        await options.store.hdel(`sessions:${userId}`, sessionId);
-                    },
-                    revokeAllSessions: async (userId) => {
-                        await options.store.del(`sessions:${userId}`);
-                    },
-                };
+                const sessionIsValid = await adminSessionIsValid(sessionStore, decoded, token);
+                if (!sessionIsValid) {
+                    return res.status(403).json(INVALID_ADMIN_SESSION_ERROR);
+                }
+                attachAdminActions(req, sessionStore);
             }
             req.user = decoded;
             return next();
@@ -50,4 +38,25 @@ const requireAdmin = (options) => {
     };
 };
 exports.requireAdmin = requireAdmin;
+const tokenFromRequest = (req, allowCookieAuth) => {
+    const authHeader = req.headers.authorization;
+    const bearerToken = authHeader?.startsWith("Bearer ")
+        ? authHeader.split(" ")[1]
+        : undefined;
+    const cookieToken = allowCookieAuth ? req.cookies?.token : undefined;
+    return bearerToken || cookieToken;
+};
+const adminSessionIsValid = async (sessionStore, decoded, token) => {
+    if (!decoded.userId || !decoded.sessionId) {
+        return false;
+    }
+    return sessionStore.tokenMatches(decoded.userId, decoded.sessionId, token);
+};
+const attachAdminActions = (req, sessionStore) => {
+    req.adminActions = {
+        listSessions: (userId) => sessionStore.list(userId),
+        revokeSession: (userId, sessionId) => sessionStore.revoke(userId, sessionId),
+        revokeAllSessions: (userId) => sessionStore.revokeAll(userId),
+    };
+};
 //# sourceMappingURL=adminService.js.map

@@ -1,4 +1,4 @@
-import { IdentityEngine } from "./types";
+import { IdentityEngine } from "../types";
 type IdentityAdapter = {
     findUserByEmail(email: string): Promise<any>;
     findUserByProvider(provider: string, providerId: string): Promise<any>;

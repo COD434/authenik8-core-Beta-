@@ -82,7 +82,7 @@ describe("Authenik8 Full Integration", () => {
       .post("/refresh")
       .send({ refreshToken: newToken });
 
-    expect(validRes.status).toBe(200);
+    expect(validRes.status).toBe(401);
   });
 
 });

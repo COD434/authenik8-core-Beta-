@@ -60,7 +60,7 @@ describe('validateRedisConfig', () => {
   it('throws when URL does not start with redis:// or rediss://', () => {
     expect(() =>
       validateRedisConfig({ url: 'http://localhost:6379', connectTimeout: 5000 })
-    ).toThrow("Redis URL must use 'redis://' protocol");
+    ).toThrow("Redis URL must use 'redis://' or 'rediss://' protocol");
   });
 
   it('passes for a valid redis:// URL', () => {
@@ -200,6 +200,20 @@ describe('setupRedis', () => {
 
     expect(Redis).toHaveBeenCalledWith(
       expect.objectContaining({ password: 'mypassword' })
+    );
+  });
+
+  it('passes rediss URL and TLS options to Redis constructor', async () => {
+    vi.mocked(Redis).mockImplementationOnce(function () {
+      currentMockRedis = makeMockRedis('ready');
+      return currentMockRedis as any;
+    });
+
+    await setupRedis({ redisConfig: { url: 'rediss://redis.example.com:6380' } });
+
+    expect(Redis).toHaveBeenCalledWith(
+      'rediss://redis.example.com:6380',
+      expect.objectContaining({ tls: {} })
     );
   });
 });

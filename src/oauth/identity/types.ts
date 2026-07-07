@@ -49,3 +49,38 @@ export type IdentityResult =
 	  email:string;
 	  provider:string;
   }
+
+export type IdentityProviderRecord = {
+  provider: string;
+  providerId: string;
+};
+
+export type IdentityUser = {
+  id: string;
+  email: string;
+  providers: IdentityProviderRecord[];
+};
+
+export interface OAuthIdentityAdapter {
+  findUserByEmail(email: string): Promise<IdentityUser | null>;
+  findUserByProvider(provider: string, providerId: string): Promise<IdentityUser | null>;
+  createUser(data: {
+    email: string;
+    provider: string;
+    providerId: string;
+  }): Promise<IdentityUser>;
+  linkProvider(userId: string, provider: string, providerId: string): Promise<void>;
+}
+
+export type OAuthMode = "login" | "link";
+
+export type OAuthState = {
+  userId: string | null;
+  mode: OAuthMode;
+};
+
+export interface OAuthStateStore {
+  set(state: string, value: OAuthState, ttlSeconds: number): Promise<void>;
+  get(state: string): Promise<OAuthState | null>;
+  del(state: string): Promise<void>;
+}

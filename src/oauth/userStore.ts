@@ -1,24 +1,12 @@
 import crypto from "crypto";
-import { OAuthProfile } from "./types";
-
-export const resetStore = () => {
-  users.splice(0)
-};
-export type Provider = "google" | "github";
-
-export type User = {
-  id: string;
-  email: string;
-  role?:string;
-
-  providers: {
-    provider: Provider;
-    providerId: string;
-  }[];
-};
+import type { User, Provider } from "./types";
 
 
 const users: User[] = [];
+
+export const resetStore = () => {
+  users.splice(0);
+};
 
 export async function findUserByEmail(email: string): Promise<User | undefined> {
   return users.find((u) => u.email === email);

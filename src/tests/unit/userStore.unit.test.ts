@@ -7,8 +7,8 @@ import {
   findUserByProvider,
   createUser,
   linkProvider,
-  type Provider,
 } from '../../oauth/userStore';
+import type { Provider } from '../../oauth/types';
 
 
 vi.mock('crypto', () => ({

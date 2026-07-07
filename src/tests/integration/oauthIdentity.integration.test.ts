@@ -1,5 +1,7 @@
 import Redis from "ioredis";
 import { createAuthenik8 } from "../../createAuthenik8";
+import { createRedisIdentityAdapter } from "../../oauth/adapters/redisAdapter";
+import { createIdentityEngine } from "../../oauth/brain/identityEngine";
 import { createRedisTestHelper, RedisTestHelper } from "../helpers/redisTestHelper";
 
 describe("OAuth identity issuance", () => {
@@ -30,42 +32,51 @@ describe("OAuth identity issuance", () => {
       refreshSecret: "oauth-refresh",
       redis: secondaryRedis,
     });
+    const engineA = createIdentityEngine(createRedisIdentityAdapter(redisHelper.redis), {
+      signAccessToken: authA.signToken,
+      generateRefreshToken: authA.generateRefreshToken,
+    });
+    const engineB = createIdentityEngine(createRedisIdentityAdapter(secondaryRedis), {
+      signAccessToken: authB.signToken,
+      generateRefreshToken: authB.generateRefreshToken,
+    });
 
-    const firstTokens = await authA.issueTokensFromProfile({
+    const firstTokens = await engineA.resolveOAuth({
+      mode: "login",
+      userId: null,
+      profile: {
       email,
       provider: "google",
       providerId,
       email_verified: true,
-    });
-    const secondTokens = await authB.issueTokensFromProfile({
+      },
+    }) as any;
+    const secondTokens = await engineB.resolveOAuth({
+      mode: "login",
+      userId: null,
+      profile: {
       email,
       provider: "google",
       providerId,
       email_verified: true,
-    });
+      },
+    }) as any;
 
-    const firstPayload = authA.verifyToken(await firstTokens.accessToken);
-    const secondPayload = authB.verifyToken(await secondTokens.accessToken);
+    const firstPayload = authA.verifyToken(firstTokens.accessToken);
+    const secondPayload = authB.verifyToken(secondTokens.accessToken);
 
     expect(firstPayload?.userId).toBeDefined();
     expect(firstPayload?.userId).not.toBe(providerId);
     expect(secondPayload?.userId).toBe(firstPayload?.userId);
   });
 
-  test("rejects unverified OAuth profiles", async () => {
+  test("does not expose caller-supplied OAuth profile token issuance", async () => {
     const auth = await createAuthenik8({
       jwtSecret: "oauth-secret",
       refreshSecret: "oauth-refresh",
       redis: redisHelper.redis,
     });
 
-    await expect(
-      auth.issueTokensFromProfile({
-        email: `${redisHelper.namespace}-unverified@example.com`,
-        provider: "github",
-        providerId: `${redisHelper.namespace}:github`,
-        email_verified: false,
-      })
-    ).rejects.toThrow("OAuth profile email must be verified before issuing tokens");
+    expect(auth).not.toHaveProperty("issueTokensFromProfile");
   });
 });

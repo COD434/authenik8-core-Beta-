@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { createIdentityEngine } from '../../oauth/brain/identityEngine';
 import { identityPolicy } from '../../oauth/brain/identityPolicy';
-import type { Provider } from '../../oauth/userStore';
+import type { Provider } from '../../oauth/types';
 
 const mockAdapter = {
   findUserByEmail: vi.fn(),
@@ -65,10 +65,11 @@ describe('createIdentityEngine', () => {
       expect(result.user).toEqual(mockUser);
       expect(result.accessToken).toBe('mock-access-token');
       expect(result.refreshToken).toBe('mock-refresh-token');
-      expect(mockTokenService.signAccessToken).toHaveBeenCalledWith({
+      expect(mockTokenService.signAccessToken).toHaveBeenCalledWith(expect.objectContaining({
         userId: mockUser.id,
         email: mockUser.email,
-      });
+        sessionId: expect.any(String),
+      }));
     });
 
     it('does not call createUser or linkProvider for existing provider', async () => {
@@ -241,14 +242,16 @@ describe('createIdentityEngine', () => {
     it('signs tokens with the new user payload', async () => {
       await engine.resolveOAuth({ profile: baseProfile, mode: 'login' });
 
-      expect(mockTokenService.signAccessToken).toHaveBeenCalledWith({
+      expect(mockTokenService.signAccessToken).toHaveBeenCalledWith(expect.objectContaining({
         userId: mockUser.id,
         email: mockUser.email,
-      });
-      expect(mockTokenService.generateRefreshToken).toHaveBeenCalledWith({
+        sessionId: expect.any(String),
+      }));
+      expect(mockTokenService.generateRefreshToken).toHaveBeenCalledWith(expect.objectContaining({
         userId: mockUser.id,
         email: mockUser.email,
-      });
+        sessionId: expect.any(String),
+      }));
     });
   });
 });

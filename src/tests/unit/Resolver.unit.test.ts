@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { resolveIdentity } from '../../oauth/brain/identityResolver';
 import { identityPolicy } from '../../oauth/brain/identityPolicy';
-import type { Provider } from '../../oauth/userStore';
+import type { Provider } from '../../oauth/types';
 import type { OAuthProfile } from '../../oauth/types';
 
 vi.mock('../../oauth/userStore', () => ({

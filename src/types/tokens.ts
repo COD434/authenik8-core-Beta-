@@ -2,6 +2,7 @@ export type TokenPayload = {
   email: string;
   role?: string;
   userId: string;
+  sessionId?: string;
 }
 
 export type TokenPair = {

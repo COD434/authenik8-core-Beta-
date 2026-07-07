@@ -1,9 +1,7 @@
-
-import { SignOptions } from "jsonwebtoken";
-import { Redis } from "ioredis";
-import { GoogleOAuthConfig } from "../oauth/types";
-import { OAuthConfig } from "../oauth/types";
-import type { OAuthIdentityAdapter } from "../oauth/adapters/redisAdapter";
+import type { SignOptions } from "jsonwebtoken";
+import type { Redis } from "ioredis";
+import type { OAuthConfig } from "../oauth/types";
+import type { OAuthIdentityAdapter } from "../oauth/identity/types";
 
 
 
@@ -16,4 +14,5 @@ export interface Authenik8Config {
   redis?: Redis; 
   identityAdapter?: OAuthIdentityAdapter;
   trustProxyHeaders?: boolean;
+  allowCookieAuth?: boolean;
 }

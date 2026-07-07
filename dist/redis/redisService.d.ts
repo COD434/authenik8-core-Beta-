@@ -1,5 +1,5 @@
 import { RedisStore } from "connect-redis";
-import Redis from "ioredis";
+import Redis, { RedisOptions } from "ioredis";
 interface RedisConfig {
     url?: string;
     host?: string;
@@ -7,6 +7,7 @@ interface RedisConfig {
     password?: string;
     maxRetriesPerRequest?: number;
     connectTimeout: number;
+    tls?: RedisOptions["tls"];
 }
 interface RedisStoreOptions {
     prefix?: string;

@@ -5,15 +5,16 @@ export declare class MissingTokenError extends Error {
 export declare class InvalidTokenError extends Error {
     constructor(message?: string);
 }
-interface TokenPayload {
+interface RefreshTokenPayload {
     userId: string;
     email: string;
+    sessionId?: string;
 }
 export interface TokenStore {
     get(key: string): Promise<string | null>;
     set?(key: string, value: string, expiry?: number): Promise<void>;
     del?(key: string): Promise<void>;
-    getset?(key: string, value: string, expiry?: number): Promise<string | null>;
+    compareAndSet?(key: string, expected: string, value: string, expiry?: number): Promise<boolean>;
 }
 export interface RefreshServiceOptions {
     tokenStore: TokenStore;
@@ -29,18 +30,26 @@ export interface RefreshResult {
     refreshToken?: string;
 }
 export declare class RefreshService {
-    private tokenStore;
-    private accessTokenSecret;
-    private refreshTokenSecret;
-    private accessTokenExpiry;
-    private rotateRefreshTokens;
-    private refreshTokenExpiry;
-    private lock;
-    private redisClient;
+    private readonly tokenStore;
+    private readonly accessTokenSecret;
+    private readonly refreshTokenSecret;
+    private readonly accessTokenExpiry;
+    private readonly rotateRefreshTokens;
+    private readonly refreshTokenExpiry;
+    private readonly lock;
+    private readonly sessionStore;
     constructor(options: RefreshServiceOptions);
-    private persistSessionToken;
-    generateRefreshToken(payload: TokenPayload): Promise<string>;
+    generateRefreshToken(payload: RefreshTokenPayload): Promise<string>;
     refresh(refreshToken?: string): Promise<RefreshResult>;
+    private rotateTokenIfEnabled;
+    private verifyRefreshToken;
+    private signRefreshToken;
+    private signAccessToken;
+    private persistSessionToken;
+    private revokeRefreshFamily;
+    private refreshTokenTtlSeconds;
+    private refreshKey;
+    private lockKey;
 }
 export {};
 //# sourceMappingURL=refreshService.d.ts.map

@@ -2,6 +2,7 @@ import type { Request, Response } from "express";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import { memoryAdapter } from "../../oauth/adapters/memoryAdapter";
 import { createIdentityEngine } from "../../oauth/brain/identityEngine";
+import { createRedisOAuthStateStore } from "../../oauth/core";
 import { createGitHubProvider } from "../../oauth/providers/github";
 import { createGoogleProvider } from "../../oauth/providers/google";
 
@@ -109,8 +110,9 @@ describe("OAuth provider linking end to end", () => {
     memoryAdapter.reset();
     redis = new TestRedis();
     identityEngine = createIdentityEngine(memoryAdapter, tokenService);
-    google = createGoogleProvider(googleConfig, redis as any, identityEngine);
-    github = createGitHubProvider(githubConfig, redis as any, identityEngine);
+    const stateStore = createRedisOAuthStateStore(redis);
+    google = createGoogleProvider(googleConfig, stateStore, identityEngine);
+    github = createGitHubProvider(githubConfig, stateStore, identityEngine);
 
     vi.stubGlobal(
       "fetch",
@@ -166,7 +168,7 @@ describe("OAuth provider linking end to end", () => {
     const googleCallback = await google.handleCallback(
       callbackRequest("/oauth/google/callback", googleState)
     );
-    const created = await identityEngine.resolveOAuth(googleCallback);
+    const created = googleCallback.identity as any;
 
     expect(created.type).toBe("NEW_USER_CREATION");
     const userId = created.user.id;
@@ -181,7 +183,7 @@ describe("OAuth provider linking end to end", () => {
     const githubLinkCallback = await github.handleCallback(
       callbackRequest("/oauth/github/callback", githubLinkState)
     );
-    const linked = await identityEngine.resolveOAuth(githubLinkCallback);
+    const linked = githubLinkCallback.identity as any;
 
     expect(linked.type).toBe("LINK_PROVIDER");
     expect(linked.user.id).toBe(userId);
@@ -198,7 +200,7 @@ describe("OAuth provider linking end to end", () => {
     const githubLoginCallback = await github.handleCallback(
       callbackRequest("/oauth/github/callback", githubLoginState)
     );
-    const loggedIn = await identityEngine.resolveOAuth(githubLoginCallback);
+    const loggedIn = githubLoginCallback.identity as any;
 
     expect(loggedIn.type).toBe("EXISTING_PROVIDER_LOGIN");
     expect(loggedIn.user.id).toBe(userId);
@@ -212,7 +214,7 @@ describe("OAuth provider linking end to end", () => {
     const githubCallback = await github.handleCallback(
       callbackRequest("/oauth/github/callback", githubState)
     );
-    const created = await identityEngine.resolveOAuth(githubCallback);
+    const created = githubCallback.identity as any;
 
     expect(created.type).toBe("NEW_USER_CREATION");
     const userId = created.user.id;
@@ -226,7 +228,7 @@ describe("OAuth provider linking end to end", () => {
     const googleLinkCallback = await google.handleCallback(
       callbackRequest("/oauth/google/callback", googleLinkState)
     );
-    const linked = await identityEngine.resolveOAuth(googleLinkCallback);
+    const linked = googleLinkCallback.identity as any;
 
     expect(linked.type).toBe("LINK_PROVIDER");
     expect(linked.user.id).toBe(userId);
@@ -243,7 +245,7 @@ describe("OAuth provider linking end to end", () => {
     const googleLoginCallback = await google.handleCallback(
       callbackRequest("/oauth/google/callback", googleLoginState)
     );
-    const loggedIn = await identityEngine.resolveOAuth(googleLoginCallback);
+    const loggedIn = googleLoginCallback.identity as any;
 
     expect(loggedIn.type).toBe("EXISTING_PROVIDER_LOGIN");
     expect(loggedIn.user.id).toBe(userId);

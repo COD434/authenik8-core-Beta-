@@ -3,10 +3,10 @@ import { createGitHubProvider } from '../../oauth/providers/github';
 import type { Request, Response } from 'express';
 
 
-const mockRedis = {
-  setex: vi.fn().mockResolvedValue('OK'),
+const mockStateStore = {
+  set: vi.fn().mockResolvedValue(undefined),
   get: vi.fn(),
-  del: vi.fn().mockResolvedValue(1),
+  del: vi.fn().mockResolvedValue(undefined),
 };
 
 const mockIdentityEngine = {
@@ -36,7 +36,7 @@ const mockRes = () => {
 
 
 function makeStoredState(overrides = {}) {
-  return JSON.stringify({ userId: null, mode: 'login', ...overrides });
+  return { userId: null, mode: 'login' as const, ...overrides };
 }
 
 function mockFetchSequence(...responses: Array<{ ok?: boolean; text?:string; json: any }>) {
@@ -67,7 +67,7 @@ describe('createGitHubProvider', () => {
   beforeEach(() => {
     provider = createGitHubProvider(
       mockConfig,
-      mockRedis as any,
+      mockStateStore as any,
       mockIdentityEngine as any
     );
   });
@@ -80,10 +80,10 @@ describe('createGitHubProvider', () => {
 
       await provider.redirect(req, res);
 
-      expect(mockRedis.setex).toHaveBeenCalledWith(
-        expect.stringMatching(/^oauth:state:/),
-        300,
-        expect.stringContaining('"mode":"login"')
+      expect(mockStateStore.set).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({ mode: 'login' }),
+        300
       );
       expect(res.redirect).toHaveBeenCalledWith(
         expect.stringContaining('https://github.com/login/oauth/authorize')
@@ -109,10 +109,10 @@ describe('createGitHubProvider', () => {
 
       await provider.redirect(req, res, 'link');
 
-      expect(mockRedis.setex).toHaveBeenCalledWith(
+      expect(mockStateStore.set).toHaveBeenCalledWith(
         expect.any(String),
-        300,
-        expect.stringContaining('"userId":"user-123"')
+        expect.objectContaining({ userId: 'user-123' }),
+        300
       );
     });
 
@@ -122,10 +122,10 @@ describe('createGitHubProvider', () => {
 
       await provider.redirect(req, res, 'link');
 
-      expect(mockRedis.setex).toHaveBeenCalledWith(
+      expect(mockStateStore.set).toHaveBeenCalledWith(
         expect.any(String),
-        300,
-        expect.stringContaining('"mode":"link"')
+        expect.objectContaining({ mode: 'link' }),
+        300
       );
     });
 
@@ -136,7 +136,7 @@ describe('createGitHubProvider', () => {
       await provider.redirect(req, res as unknown as Response);
 
       expect(res.redirect).not.toHaveBeenCalled();
-      expect(mockRedis.setex).not.toHaveBeenCalled();
+      expect(mockStateStore.set).not.toHaveBeenCalled();
     });
   });
 
@@ -151,7 +151,7 @@ describe('createGitHubProvider', () => {
     });
 
     it('throws when state is not found in Redis', async () => {
-      mockRedis.get.mockResolvedValue(null);
+      mockStateStore.get.mockResolvedValue(null);
       const req = mockReq({ query: { code: 'abc', state: 'bad-state' } });
 
       await expect(provider.handleCallback(req)).rejects.toThrow(
@@ -160,7 +160,7 @@ describe('createGitHubProvider', () => {
     });
 
     it('throws when code is missing from query', async () => {
-      mockRedis.get.mockResolvedValue(makeStoredState());
+      mockStateStore.get.mockResolvedValue(makeStoredState());
       const req = mockReq({ query: { state: 'valid-state' } });
 
       await expect(provider.handleCallback(req)).rejects.toThrow(
@@ -169,7 +169,7 @@ describe('createGitHubProvider', () => {
     });
 
     it('throws when GitHub returns no access token', async () => {
-      mockRedis.get.mockResolvedValue(makeStoredState());
+      mockStateStore.get.mockResolvedValue(makeStoredState());
       mockFetchSequence({ json: {} }); // token exchange returns empty
 
       const req = mockReq({ query: { code: 'mycode', state: 'valid-state' } });
@@ -180,7 +180,7 @@ describe('createGitHubProvider', () => {
     });
 
     it('throws when GitHub user fetch fails', async () => {
-      mockRedis.get.mockResolvedValue(makeStoredState());
+      mockStateStore.get.mockResolvedValue(makeStoredState());
       mockFetchSequence(
         { json: { access_token: 'gh-token' } }, 
         { ok: false, json: {} }                  
@@ -194,7 +194,7 @@ describe('createGitHubProvider', () => {
     });
 
     it('throws when no verified primary email is found', async () => {
-      mockRedis.get.mockResolvedValue(makeStoredState());
+      mockStateStore.get.mockResolvedValue(makeStoredState());
       mockFetchSequence(
         { json: { access_token: 'gh-token' } },
         { json: { id: 99, name: 'Dev' } },
@@ -209,7 +209,7 @@ describe('createGitHubProvider', () => {
     });
 
     it('returns profile, mode and userId on success', async () => {
-      mockRedis.get.mockResolvedValue(
+      mockStateStore.get.mockResolvedValue(
         makeStoredState({ userId: 'user-123', mode: 'link' })
       );
       mockFetchSequence(
@@ -237,7 +237,7 @@ describe('createGitHubProvider', () => {
     });
 
     it('deletes the state key from Redis after success', async () => {
-      mockRedis.get.mockResolvedValue(makeStoredState());
+      mockStateStore.get.mockResolvedValue(makeStoredState());
       mockFetchSequence(
         { json: { access_token: 'gh-token' } },
         { json: { id: 42, name: 'Dev' } },
@@ -247,7 +247,7 @@ describe('createGitHubProvider', () => {
       const req = mockReq({ query: { code: 'mycode', state: 'valid-state' } });
       await provider.handleCallback(req);
 
-      expect(mockRedis.del).toHaveBeenCalledWith('oauth:state:valid-state');
+      expect(mockStateStore.del).toHaveBeenCalledWith('valid-state');
     });
   });
 });

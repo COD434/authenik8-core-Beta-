@@ -9,11 +9,11 @@ exports.findUserByProvider = findUserByProvider;
 exports.createUser = createUser;
 exports.linkProvider = linkProvider;
 const crypto_1 = __importDefault(require("crypto"));
+const users = [];
 const resetStore = () => {
     users.splice(0);
 };
 exports.resetStore = resetStore;
-const users = [];
 async function findUserByEmail(email) {
     return users.find((u) => u.email === email);
 }

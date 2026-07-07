@@ -26,9 +26,9 @@ describe("Refresh Token Concurrency (Integration)", () => {
     app.use(express.json());
 
     app.post("/login", async (_req, res) => {
-      const token = auth.signToken({ userId, email });
-      refreshToken = await auth.generateRefreshToken({ userId, email });
-      res.json({ token, refreshToken });
+      const tokens = await auth.issueTokens({ userId, email });
+      refreshToken = tokens.refreshToken;
+      res.json({ token: tokens.accessToken, refreshToken });
     });
 
     app.post("/refresh", async (req, res) => {

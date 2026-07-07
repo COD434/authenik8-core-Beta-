@@ -20,7 +20,7 @@ vi.mock('../../utility/lockHelper', () => ({
 }));
 
 describe('RefreshService', () => {
-  let tokenStore: TokenStore & { getset?: any };
+  let tokenStore: TokenStore & { compareAndSet?: any };
   let redisClient: any;
   let options: RefreshServiceOptions;
   let service: RefreshService;
@@ -28,8 +28,8 @@ describe('RefreshService', () => {
   const mockAccessToken = 'new.access.token.jwt';
   const mockRefreshToken = 'valid.refresh.token.jwt';
   const mockNewRefreshToken = 'rotated.refresh.token.jwt';
-  const userPayload = { userId: 'user123', email: 'test@example.com' };
-  const decodedPayload = { userId: 'user123', email: 'test@example.com' };
+  const userPayload = { userId: 'user123', email: 'test@example.com', sessionId: 'session-1' };
+  const decodedPayload = { userId: 'user123', email: 'test@example.com', sessionId: 'session-1' };
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -37,11 +37,15 @@ describe('RefreshService', () => {
     tokenStore = {
       get: vi.fn(),
       set: vi.fn(),
-      getset: vi.fn(),
+      del: vi.fn(),
+      compareAndSet: vi.fn(),
     } ;
 
     redisClient = {
-      set: vi.fn().mockResolvedValue('OK'),
+      hget: vi.fn().mockResolvedValue(null),
+      hset: vi.fn().mockResolvedValue(1),
+      hdel: vi.fn().mockResolvedValue(1),
+      expire: vi.fn().mockResolvedValue(1),
     };
 
     options = {
@@ -73,7 +77,7 @@ describe('RefreshService', () => {
         { expiresIn: '7d' }
       );
       expect(tokenStore.set).toHaveBeenCalledWith(
-        'refresh:user123',
+        'refresh:user123:session-1',
         mockRefreshToken,
         60 * 60 * 24 * 7
       );
@@ -127,13 +131,12 @@ describe('RefreshService', () => {
 
       expect(result.accessToken).toBe(mockAccessToken);
       expect(result.refreshToken).toBe(mockRefreshToken);
-      expect(redisClient.set).toHaveBeenCalledWith(
+      expect(redisClient.hset).toHaveBeenCalledWith(
         'sessions:user123',
-        mockAccessToken,
-        'EX',
-        expect.any(Number)
+        'session-1',
+        expect.stringContaining(mockAccessToken)
       );
-      expect(mockLockInstance.release).toHaveBeenCalledWith('lock:user123', 'lock-value-xyz');
+      expect(mockLockInstance.release).toHaveBeenCalledWith('lock:user123:session-1', 'lock-value-xyz');
     });
 
     it('rotates refresh token when rotateRefreshTokens = true', async () => {
@@ -141,13 +144,14 @@ describe('RefreshService', () => {
       const rotatingService = new RefreshService(rotatingOptions);
 
       vi.mocked(tokenStore.get).mockResolvedValue(mockRefreshToken);
-      vi.mocked(tokenStore.getset).mockResolvedValue(mockRefreshToken);
-      (jwt.sign as any).mockReturnValueOnce(mockAccessToken).mockReturnValueOnce(mockNewRefreshToken);
+      vi.mocked(tokenStore.compareAndSet).mockResolvedValue(true);
+      (jwt.sign as any).mockReturnValueOnce(mockNewRefreshToken).mockReturnValueOnce(mockAccessToken);
 
       const result = await rotatingService.refresh(mockRefreshToken);
 
-      expect(tokenStore.getset).toHaveBeenCalledWith(
-        'refresh:user123',
+      expect(tokenStore.compareAndSet).toHaveBeenCalledWith(
+        'refresh:user123:session-1',
+        mockRefreshToken,
         mockNewRefreshToken,
         60 * 60 * 24 * 7
       );
@@ -155,14 +159,16 @@ describe('RefreshService', () => {
       expect(mockLockInstance.release).toHaveBeenCalled();
     });
 
-    it('detects concurrent refresh during rotation (getset returns unexpected token)', async () => {
+    it('detects concurrent refresh during rotation and revokes the token family', async () => {
       const rotatingOptions = { ...options, rotateRefreshTokens: true };
       const rotatingService = new RefreshService(rotatingOptions);
 
       vi.mocked(tokenStore.get).mockResolvedValue(mockRefreshToken);
-      vi.mocked(tokenStore.getset).mockResolvedValue('some-other-token'); // concurrent change
+      vi.mocked(tokenStore.compareAndSet).mockResolvedValue(false);
 
       await expect(rotatingService.refresh(mockRefreshToken)).rejects.toThrow(InvalidTokenError);
+      expect(tokenStore.del).toHaveBeenCalledWith('refresh:user123:session-1');
+      expect(redisClient.hdel).toHaveBeenCalledWith('sessions:user123', 'session-1');
     });
 
     it('releases lock in finally block even when an error occurs', async () => {
@@ -171,7 +177,7 @@ describe('RefreshService', () => {
 
       await expect(service.refresh(mockRefreshToken)).rejects.toThrow();
 
-      expect(mockLockInstance.release).toHaveBeenCalledWith('lock:user123', 'lock-value-xyz');
+      expect(mockLockInstance.release).toHaveBeenCalledWith('lock:user123:session-1', 'lock-value-xyz');
     });
   });
 });

@@ -9,7 +9,7 @@ const mockRedis = {
   exists: vi.fn().mockResolvedValue(0),
   incr: vi.fn().mockResolvedValue(1),
   expire: vi.fn().mockResolvedValue(1),
-  getset: vi.fn().mockResolvedValue(null),
+  eval: vi.fn().mockResolvedValue(1),
 };
 
 beforeEach(() => {
@@ -31,7 +31,7 @@ describe('storeRefreshToken', () => {
 
     expect(mockRedis.set).toHaveBeenCalledWith(
       `${PREFIX}:refresh:user-1`,
-      'user-1',
+      'tok-abc',
       'EX',
       3600
     );
@@ -41,12 +41,12 @@ describe('storeRefreshToken', () => {
 
 describe('getRefreshToken', () => {
   it('returns the stored value', async () => {
-    mockRedis.get.mockResolvedValue('user-1');
+    mockRedis.get.mockResolvedValue('tok-abc');
     const store = makeStore();
 
     const result = await store.getRefreshToken('user-1');
 
-    expect(result).toBe('user-1');
+    expect(result).toBe('tok-abc');
     expect(mockRedis.get).toHaveBeenCalledWith(`${PREFIX}:refresh:user-1`);
   });
 
@@ -69,29 +69,39 @@ describe('deleteRefreshToken', () => {
 });
 
 
-describe('getset', () => {
-  it('calls redis.getset and returns the previous value', async () => {
-    mockRedis.getset.mockResolvedValue('old-value');
+describe('del', () => {
+  it('deletes an exact key', async () => {
+    const store = makeStore();
+    await store.del('refresh:user-1:session-1');
+
+    expect(mockRedis.del).toHaveBeenCalledWith('refresh:user-1:session-1');
+  });
+});
+
+
+describe('compareAndSet', () => {
+  it('returns true when Redis updates the matching value', async () => {
+    mockRedis.eval.mockResolvedValue(1);
     const store = makeStore();
 
-    const result = await store.getset('my-key', 'new-value');
+    const result = await store.compareAndSet('my-key', 'old-value', 'new-value', 60);
 
-    expect(mockRedis.getset).toHaveBeenCalledWith('my-key', 'new-value');
-    expect(result).toBe('old-value');
+    expect(result).toBe(true);
+    expect(mockRedis.eval).toHaveBeenCalledWith(
+      expect.any(String),
+      1,
+      'my-key',
+      'old-value',
+      'new-value',
+      '60'
+    );
   });
 
-  it('sets expiry when provided', async () => {
+  it('returns false when Redis does not update the value', async () => {
+    mockRedis.eval.mockResolvedValue(0);
     const store = makeStore();
-    await store.getset('my-key', 'new-value', 60);
 
-    expect(mockRedis.expire).toHaveBeenCalledWith('my-key', 60);
-  });
-
-  it('does not call expire when no expiry is given', async () => {
-    const store = makeStore();
-    await store.getset('my-key', 'new-value');
-
-    expect(mockRedis.expire).not.toHaveBeenCalled();
+    await expect(store.compareAndSet('my-key', 'old-value', 'new-value')).resolves.toBe(false);
   });
 });
 
@@ -222,4 +232,3 @@ describe('get', () => {
     expect(await store.get('missing-key')).toBeNull();
   });
 });
-

@@ -33,10 +33,15 @@ describe('Store', () => {
 
       await store.register('new@example.com', 'password123');
 
-      expect(mockUserStore.create).toHaveBeenCalledWith({
-        email: 'new@example.com',
-        password: 'password123',
-      });
+      expect(mockUserStore.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          email: 'new@example.com',
+          passwordHash: expect.stringMatching(/^scrypt\$/),
+        })
+      );
+      const createdUser = mockUserStore.create.mock.calls[0]?.[0];
+      expect(createdUser).toBeDefined();
+      expect(createdUser).not.toHaveProperty('password');
     });
 
     it('calls findByEmail with the provided email', async () => {

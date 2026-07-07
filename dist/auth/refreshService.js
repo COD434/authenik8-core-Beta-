@@ -7,6 +7,10 @@ exports.RefreshService = exports.InvalidTokenError = exports.MissingTokenError =
 const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
 const crypto_1 = require("crypto");
 const lockHelper_1 = require("../utility/lockHelper");
+const sessionStore_1 = require("./sessionStore");
+const DEFAULT_REFRESH_TTL_SECONDS = 60 * 60 * 24 * 7;
+const SESSION_TTL_FALLBACK_SECONDS = 3600;
+const REFRESH_LOCK_TTL_MS = 5000;
 class MissingTokenError extends Error {
     constructor(message = "Missing Token") {
         super(message);
@@ -30,22 +34,20 @@ class RefreshService {
         this.rotateRefreshTokens = options.rotateRefreshTokens ?? false;
         this.refreshTokenExpiry = options.refreshTokenExpiry ?? "7d";
         this.lock = new lockHelper_1.RedisLock(options.redisClient);
-        this.redisClient = options.redisClient;
-    }
-    async persistSessionToken(userId, token) {
-        const decoded = jsonwebtoken_1.default.decode(token);
-        const now = Math.floor(Date.now() / 1000);
-        const ttl = decoded?.exp ? Math.max(decoded.exp - now, 1) : 3600;
-        await this.redisClient.set(`sessions:${userId}`, token, "EX", ttl);
+        this.sessionStore = new sessionStore_1.SessionStore(options.redisClient);
     }
     async generateRefreshToken(payload) {
-        if (!payload.userId)
+        if (!payload.userId) {
             throw new Error("generateRefreshToken: payload.userId is missing");
-        const token = jsonwebtoken_1.default.sign({ ...payload, jti: (0, crypto_1.randomUUID)(), }, this.refreshTokenSecret, {
-            expiresIn: this.refreshTokenExpiry,
+        }
+        const sessionId = payload.sessionId ?? (0, crypto_1.randomUUID)();
+        const token = this.signRefreshToken({
+            userId: payload.userId,
+            email: payload.email,
+            sessionId,
         });
         if (this.tokenStore.set) {
-            await this.tokenStore.set(`refresh:${payload.userId}`, token, 60 * 60 * 24 * 7);
+            await this.tokenStore.set(this.refreshKey(payload.userId, sessionId), token, this.refreshTokenTtlSeconds());
         }
         return token;
     }
@@ -53,50 +55,112 @@ class RefreshService {
         if (!refreshToken) {
             throw new MissingTokenError();
         }
-        let decoded;
-        try {
-            decoded = jsonwebtoken_1.default.verify(refreshToken, this.refreshTokenSecret);
-        }
-        catch (err) {
-            throw new InvalidTokenError();
-        }
-        const lockKey = `lock:${decoded.userId}`;
-        const lockValue = await this.lock.acquire(lockKey, 5000);
-        let hasLock = !!lockValue;
+        const decoded = this.verifyRefreshToken(refreshToken);
+        const lockKey = this.lockKey(decoded.userId, decoded.sessionId);
+        const lockValue = await this.lock.acquire(lockKey, REFRESH_LOCK_TTL_MS);
         if (!lockValue) {
             throw new InvalidTokenError("Concurrent refresh detected");
         }
         try {
-            const key = `refresh:${decoded.userId}`;
+            const key = this.refreshKey(decoded.userId, decoded.sessionId);
             const storedToken = await this.tokenStore.get(key);
-            if (!storedToken || storedToken !== refreshToken) {
+            if (storedToken !== refreshToken) {
+                await this.revokeRefreshFamily(decoded.userId, decoded.sessionId);
                 throw new InvalidTokenError();
             }
-            const newAccessToken = jsonwebtoken_1.default.sign({ userId: decoded.userId, email: decoded.email }, this.accessTokenSecret, { expiresIn: this.accessTokenExpiry
-            });
-            await this.persistSessionToken(decoded.userId, newAccessToken);
-            let newRefreshToken;
-            if (this.rotateRefreshTokens && this.tokenStore.set) {
-                const key = `refresh:${decoded.userId}`;
-                newRefreshToken = jsonwebtoken_1.default.sign({ userId: decoded.userId, email: decoded.email, jti: (0, crypto_1.randomUUID)(), }, this.refreshTokenSecret, { expiresIn: this.refreshTokenExpiry
-                });
-                if (!this.tokenStore.getset) {
-                    throw new Error("TokenStore must implement getset for atomic refresh rotation");
-                }
-                const PreviousToken = await this.tokenStore.getset(key, newRefreshToken, 60 * 60 * 24 * 7);
-                if (PreviousToken !== refreshToken && PreviousToken !== storedToken) {
-                    throw new InvalidTokenError("Concurrent refresh detected");
-                }
-            }
+            const newRefreshToken = await this.rotateTokenIfEnabled(key, refreshToken, decoded);
+            const newAccessToken = this.signAccessToken(decoded);
+            await this.persistSessionToken(decoded.userId, decoded.sessionId, newAccessToken);
             return {
                 accessToken: newAccessToken,
-                refreshToken: newRefreshToken ?? refreshToken
+                refreshToken: newRefreshToken ?? refreshToken,
             };
         }
         finally {
-            if (hasLock && lockValue)
-                await this.lock.release(lockKey, lockValue);
+            await this.lock.release(lockKey, lockValue);
         }
+    }
+    async rotateTokenIfEnabled(key, currentRefreshToken, decoded) {
+        if (!this.rotateRefreshTokens) {
+            return undefined;
+        }
+        if (!this.tokenStore.compareAndSet) {
+            throw new Error("TokenStore must implement compareAndSet for atomic refresh rotation");
+        }
+        const newRefreshToken = this.signRefreshToken(decoded);
+        const rotated = await this.tokenStore.compareAndSet(key, currentRefreshToken, newRefreshToken, this.refreshTokenTtlSeconds());
+        if (!rotated) {
+            await this.revokeRefreshFamily(decoded.userId, decoded.sessionId);
+            throw new InvalidTokenError("Concurrent refresh detected");
+        }
+        return newRefreshToken;
+    }
+    verifyRefreshToken(refreshToken) {
+        let decoded;
+        try {
+            decoded = jsonwebtoken_1.default.verify(refreshToken, this.refreshTokenSecret);
+        }
+        catch {
+            throw new InvalidTokenError();
+        }
+        if (!decoded.userId || !decoded.email || !decoded.sessionId) {
+            throw new InvalidTokenError();
+        }
+        return {
+            userId: decoded.userId,
+            email: decoded.email,
+            sessionId: decoded.sessionId,
+        };
+    }
+    signRefreshToken(payload) {
+        return jsonwebtoken_1.default.sign({ ...payload, jti: (0, crypto_1.randomUUID)() }, this.refreshTokenSecret, { expiresIn: this.refreshTokenExpiry });
+    }
+    signAccessToken(payload) {
+        return jsonwebtoken_1.default.sign(payload, this.accessTokenSecret, {
+            expiresIn: this.accessTokenExpiry,
+        });
+    }
+    async persistSessionToken(userId, sessionId, token) {
+        const decoded = jsonwebtoken_1.default.decode(token);
+        const now = Math.floor(Date.now() / 1000);
+        const ttl = decoded?.exp
+            ? Math.max(decoded.exp - now, 1)
+            : SESSION_TTL_FALLBACK_SECONDS;
+        await this.sessionStore.updateToken(userId, sessionId, token, ttl);
+    }
+    async revokeRefreshFamily(userId, sessionId) {
+        if (this.tokenStore.del) {
+            await this.tokenStore.del(this.refreshKey(userId, sessionId));
+        }
+        await this.sessionStore.revoke(userId, sessionId);
+    }
+    refreshTokenTtlSeconds() {
+        if (typeof this.refreshTokenExpiry === "number") {
+            return this.refreshTokenExpiry;
+        }
+        const match = /^(\d+)([smhd])$/.exec(this.refreshTokenExpiry);
+        if (!match) {
+            return DEFAULT_REFRESH_TTL_SECONDS;
+        }
+        const amount = Number(match[1]);
+        switch (match[2]) {
+            case "s":
+                return amount;
+            case "m":
+                return amount * 60;
+            case "h":
+                return amount * 60 * 60;
+            case "d":
+                return amount * 60 * 60 * 24;
+            default:
+                return DEFAULT_REFRESH_TTL_SECONDS;
+        }
+    }
+    refreshKey(userId, sessionId) {
+        return `refresh:${userId}:${sessionId}`;
+    }
+    lockKey(userId, sessionId) {
+        return `lock:${userId}:${sessionId}`;
     }
 }
 exports.RefreshService = RefreshService;

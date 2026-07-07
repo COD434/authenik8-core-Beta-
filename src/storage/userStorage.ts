@@ -1,16 +1,32 @@
-import {UserStore} from "../types/storage"
+import { randomBytes, scrypt as scryptCallback } from "crypto";
+import { promisify } from "util";
+import { UserStore } from "../types/storage";
 
-export class Store{
-constructor(private userStore:UserStore){}
+const scrypt = promisify(scryptCallback);
+const PASSWORD_KEY_LENGTH = 64;
 
-async register(email:string, password:string){
-const exists = await this.userStore.findByEmail(email)
+export const hashPassword = async (password: string): Promise<string> => {
+  const salt = randomBytes(16).toString("hex");
+  const derivedKey = (await scrypt(
+    password,
+    salt,
+    PASSWORD_KEY_LENGTH
+  )) as Buffer;
 
-if (exists){
-throw new Error("If a record of user exists an email will be sent");
-}
+  return `scrypt$${salt}$${derivedKey.toString("hex")}`;
+};
 
-await this.userStore.create({email,password});
-}
+export class Store {
+  constructor(private readonly userStore: UserStore) {}
 
+  async register(email: string, password: string): Promise<void> {
+    const exists = await this.userStore.findByEmail(email);
+
+    if (exists) {
+      throw new Error("If a record of user exists an email will be sent");
+    }
+
+    const passwordHash = await hashPassword(password);
+    await this.userStore.create({ email, passwordHash });
+  }
 }

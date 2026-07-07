@@ -1,7 +1,7 @@
 import { OAuthProfile } from "../types";
-export declare function resolveIdentity(profile: OAuthProfile): Promise<import("../userStore").User | {
+export declare function resolveIdentity(profile: OAuthProfile): Promise<import("../types").User | {
     type: string;
-    user: import("../userStore").User;
+    user: import("../types").User;
     message: string;
 }>;
 //# sourceMappingURL=identityResolver.d.ts.map

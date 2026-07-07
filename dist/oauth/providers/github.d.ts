@@ -1,14 +1,8 @@
 import { Request, Response } from "express";
-import { OAuthProfile } from "../types";
-import type { Redis as RedisClient } from "ioredis";
-import { GitHubOAuthConfig } from "../types";
-import type { IdentityEngine } from "../brain/types";
-export declare function createGitHubProvider(config: GitHubOAuthConfig, redisClient: RedisClient, identityEngine: IdentityEngine): {
+import type { OAuthStateStore } from "../identity/types";
+import { GitHubOAuthConfig, IdentityEngine, OAuthCallbackResult } from "../types";
+export declare function createGitHubProvider(config: GitHubOAuthConfig, stateStore: OAuthStateStore, identityEngine?: IdentityEngine): {
     redirect: (req: Request, res: Response, mode?: "login" | "link") => Promise<void>;
-    handleCallback: (req: Request) => Promise<{
-        profile: OAuthProfile;
-        mode: "login" | "link";
-        userId: string | null;
-    }>;
+    handleCallback: (req: Request) => Promise<OAuthCallbackResult>;
 };
 //# sourceMappingURL=github.d.ts.map

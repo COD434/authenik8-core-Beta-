@@ -1,60 +1,71 @@
-
-import { Redis } from "ioredis";
+const COMPARE_AND_SET_SCRIPT = `
+if redis.call("GET", KEYS[1]) == ARGV[1] then
+  if ARGV[3] ~= "" then
+    redis.call("SET", KEYS[1], ARGV[2], "EX", tonumber(ARGV[3]))
+  else
+    redis.call("SET", KEYS[1], ARGV[2])
+  end
+  return 1
+end
+return 0
+`;
 
 export class RedisTokenStore {
-	private prefix = "auth:v1";
+  private readonly prefix = "auth:v1";
 
   constructor(private redis?: any, _debug = false) {}
 
-
-  private key(...parts:string[]){
-  return `${this.prefix}:${parts.join(":")}`;
+  async storeRefreshToken(
+    token: string,
+    userId: string,
+    ttl: number
+  ): Promise<void> {
+    await this.redis.set(this.key("refresh", userId), token, "EX", ttl);
   }
 
- async storeRefreshToken(token:string,userId:string,ttl:number){
- const key = this.key("refresh", userId);
- await this.redis.set(key,userId, "EX",ttl);
-
-}
-
-async getRefreshToken(userId:string){
-const key = this.key("refresh",userId);
-const value = await this.redis.get(key);
-return value;
-}
-async getset(key: string, value: string, expiry?: number): Promise<string | null> {
-
-  const previous = await this.redis.getset(key, value);
-
-  if (expiry) {
-    await this.redis.expire(key, expiry);
+  async getRefreshToken(userId: string): Promise<string | null> {
+    return this.redis.get(this.key("refresh", userId));
   }
 
-  return previous;
-}
+  async compareAndSet(
+    key: string,
+    expected: string,
+    value: string,
+    expiry?: number
+  ): Promise<boolean> {
+    const result = await this.redis.eval(
+      COMPARE_AND_SET_SCRIPT,
+      1,
+      key,
+      expected,
+      value,
+      expiry ? expiry.toString() : ""
+    );
 
-async deleteRefreshToken(userId:string){
-const key = this.key("refresh",userId);
-await this.redis.del(key);
-
-}
-
-async blacklistToken(userId: string, ttl: number) {
-    const key = this.key("blacklist", userId);
-    await this.redis.set(key, "1", "EX", ttl);
+    return Number(result) === 1;
   }
 
-  async isBlacklisted(userId: string) {
-    const key = this.key("blacklist", userId);
-    const exists = await this.redis.exists(key);
+  async deleteRefreshToken(userId: string): Promise<void> {
+    await this.redis.del(this.key("refresh", userId));
+  }
+
+  async del(key: string): Promise<void> {
+    await this.redis.del(key);
+  }
+
+  async blacklistToken(userId: string, ttl: number): Promise<void> {
+    await this.redis.set(this.key("blacklist", userId), "1", "EX", ttl);
+  }
+
+  async isBlacklisted(userId: string): Promise<boolean> {
+    const exists = await this.redis.exists(this.key("blacklist", userId));
     return exists === 1;
   }
 
-  // Rate Limiting
-  async incrementRateLimit(ip: string, ttl: number) {
+  async incrementRateLimit(ip: string, ttl: number): Promise<number> {
     const key = this.key("rate", ip);
-
     const count = await this.redis.incr(key);
+
     if (count === 1) {
       await this.redis.expire(key, ttl);
     }
@@ -62,32 +73,33 @@ async blacklistToken(userId: string, ttl: number) {
     return count;
   }
 
-  // IP Whitelist
-  async addToWhitelist(ip: string) {
-    const key = this.key("whitelist", ip);
-    await this.redis.set(key, "1");
+  async addToWhitelist(ip: string): Promise<void> {
+    await this.redis.set(this.key("whitelist", ip), "1");
   }
 
-  async removeFromWhitelist(ip: string) {
-    const key = this.key("whitelist", ip);
-    await this.redis.del(key);
+  async removeFromWhitelist(ip: string): Promise<void> {
+    await this.redis.del(this.key("whitelist", ip));
   }
 
-  async isWhitelisted(ip: string) {
-    const key = this.key("whitelist", ip);
-    const exists = await this.redis.exists(key);
+  async isWhitelisted(ip: string): Promise<boolean> {
+    const exists = await this.redis.exists(this.key("whitelist", ip));
     return exists === 1;
   }
-async set(key: string, value: string, expiry?: number): Promise<void> {
-  if (expiry) {
-    await this.redis.set(key, value, "EX", expiry);
-  } else {
+
+  async set(key: string, value: string, expiry?: number): Promise<void> {
+    if (expiry) {
+      await this.redis.set(key, value, "EX", expiry);
+      return;
+    }
+
     await this.redis.set(key, value);
   }
-}
-
 
   async get(key: string): Promise<string | null> {
-  return this.redis.get(key);
+    return this.redis.get(key);
+  }
+
+  private key(...parts: string[]): string {
+    return `${this.prefix}:${parts.join(":")}`;
   }
 }

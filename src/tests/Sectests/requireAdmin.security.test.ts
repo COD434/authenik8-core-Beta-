@@ -100,13 +100,49 @@ const createAppWithRedis = () => {
   return app;
 };
 
+const createCookieAuthAppWithRedis = () => {
+  const app = express();
+  app.use((req, _res, next) => {
+    const cookieHeader = req.headers.cookie;
+    if (cookieHeader) {
+      req.cookies = Object.fromEntries(
+        cookieHeader.split(";").map((c) => {
+          const [key, ...val] = c.trim().split("=");
+          return [key, val.join("=")];
+        })
+      );
+    }
+    next();
+  });
+
+  app.get("/admin", requireAdmin({ jwtSecret, store: mockRedis, allowCookieAuth: true }), (_req, res) =>
+    res.status(200).json({ ok: true })
+  );
+
+  return app;
+};
 
 
-const adminToken = () => jwt.sign({ userId: "admin-1", role: "admin" }, jwtSecret);
-const userToken = () => jwt.sign({ userId: "user-1", role: "user" }, jwtSecret);
+
+const adminSessionId = "admin-session-1";
+const adminToken = () => jwt.sign({ userId: "admin-1", role: "admin", sessionId: adminSessionId }, jwtSecret);
+const userToken = () => jwt.sign({ userId: "user-1", role: "user", sessionId: "user-session-1" }, jwtSecret);
+
+const seedAdminToken = async () => {
+  const token = adminToken();
+  await mockRedis.seedSession(
+    "admin-1",
+    adminSessionId,
+    { device: "Chrome/Mac", ip: "41.1.1.1", sessionId: adminSessionId, createdAt: Date.now() },
+    token
+  );
+  return token;
+};
 
 
 describe("requireAdmin", () => {
+  beforeEach(() => mockRedis.clear());
+
   test("rejects requests without a token", async () => {
     const response = await request(createAppWithRedis()).get("/admin");
     expect(response.status).toBe(401);
@@ -152,17 +188,26 @@ describe("requireAdmin", () => {
   });
 
   test("allows admin tokens via Bearer header", async () => {
+    const token = await seedAdminToken();
     const response = await request(createAppWithRedis())
       .get("/admin")
-      .set("Authorization", `Bearer ${adminToken()}`);
+      .set("Authorization", `Bearer ${token}`);
     expect(response.status).toBe(200);
     expect(response.body).toEqual({ ok: true });
   });
 
-  test("allows admin tokens via cookie", async () => {
+  test("rejects admin tokens via cookie by default", async () => {
     const response = await request(createAppWithRedis())
       .get("/admin")
       .set("Cookie", `token=${adminToken()}`);
+    expect(response.status).toBe(401);
+  });
+
+  test("allows admin tokens via cookie only when explicitly enabled", async () => {
+    const token = await seedAdminToken();
+    const response = await request(createCookieAuthAppWithRedis())
+      .get("/admin")
+      .set("Cookie", `token=${token}`);
     expect(response.status).toBe(200);
   });
 });
@@ -180,12 +225,13 @@ describe("requireAdmin — adminActions", () => {
   });
 
   test("listSessions returns all sessions without exposing tokens", async () => {
+    const token = await seedAdminToken();
     await mockRedis.seedSession("u1", "s1", { device: "Chrome/Mac", ip: "41.1.1.1", sessionId: "s1", createdAt: Date.now() }, "token-abc");
     await mockRedis.seedSession("u1", "s2", { device: "Safari/iPhone", ip: "41.2.2.2", sessionId: "s2", createdAt: Date.now() }, "token-xyz");
 
     const response = await request(createAppWithRedis())
       .get("/admin/sessions/u1")
-      .set("Authorization", `Bearer ${adminToken()}`);
+      .set("Authorization", `Bearer ${token}`);
 
     expect(response.status).toBe(200);
     expect(response.body.sessions.length).toBe(2);
@@ -198,20 +244,22 @@ describe("requireAdmin — adminActions", () => {
   });
 
   test("listSessions returns empty array for user with no sessions", async () => {
+    const token = await seedAdminToken();
     const response = await request(createAppWithRedis())
       .get("/admin/sessions/ghost")
-      .set("Authorization", `Bearer ${adminToken()}`);
+      .set("Authorization", `Bearer ${token}`);
     expect(response.status).toBe(200);
     expect(response.body.sessions.length).toBe(0);
   });
 
   test("revokeSession removes only the targeted session", async () => {
+    const token = await seedAdminToken();
     await mockRedis.seedSession("u1", "s1", { device: "Chrome/Mac", ip: "41.1.1.1", sessionId: "s1", createdAt: Date.now() }, "token-abc");
     await mockRedis.seedSession("u1", "s2", { device: "Safari/iPhone", ip: "41.2.2.2", sessionId: "s2", createdAt: Date.now() }, "token-xyz");
 
     const response = await request(createAppWithRedis())
       .delete("/admin/sessions/u1/s2")
-      .set("Authorization", `Bearer ${adminToken()}`);
+      .set("Authorization", `Bearer ${token}`);
 
     expect(response.status).toBe(200);
     const remaining = await mockRedis.hgetall("sessions:u1");
@@ -220,34 +268,37 @@ describe("requireAdmin — adminActions", () => {
   });
 
   test("revokeSession does not affect other users", async () => {
+    const token = await seedAdminToken();
     await mockRedis.seedSession("u1", "s1", { device: "Chrome/Mac", ip: "41.1.1.1", sessionId: "s1", createdAt: Date.now() }, "token-abc");
     await mockRedis.seedSession("u2", "s2", { device: "Firefox/Win", ip: "41.3.3.3", sessionId: "s2", createdAt: Date.now() }, "token-def");
 
     await request(createAppWithRedis())
       .delete("/admin/sessions/u1/s1")
-      .set("Authorization", `Bearer ${adminToken()}`);
+      .set("Authorization", `Bearer ${token}`);
 
     const u2Sessions = await mockRedis.hgetall("sessions:u2");
     expect(Object.keys(u2Sessions!)).toContain("s2");
   });
 
   test("revokeAllSessions removes all sessions for a user", async () => {
+    const token = await seedAdminToken();
     await mockRedis.seedSession("u1", "s1", { device: "Chrome/Mac", ip: "41.1.1.1", sessionId: "s1", createdAt: Date.now() }, "token-abc");
     await mockRedis.seedSession("u1", "s2", { device: "Safari/iPhone", ip: "41.2.2.2", sessionId: "s2", createdAt: Date.now() }, "token-xyz");
 
-	const response = await request(createAppWithRedis()).delete("/admin/sessions/u1").set("Authorization", `Bearer ${adminToken()}`);
+	const response = await request(createAppWithRedis()).delete("/admin/sessions/u1").set("Authorization", `Bearer ${token}`);
 	    expect(response.status).toBe(200);
 	    const remaining = await mockRedis.hgetall("sessions:u1");
 	    expect(remaining).toBeNull();
 	  });
 
   test("revokeAllSessions does not affect other users", async () => {
+    const token = await seedAdminToken();
     await mockRedis.seedSession("u1", "s1", { device: "Chrome/Mac", ip: "41.1.1.1", sessionId: "s1", createdAt: Date.now() }, "token-abc");
     await mockRedis.seedSession("u2", "s2", { device: "Firefox/Win", ip: "41.3.3.3", sessionId: "s2", createdAt: Date.now() }, "token-def");
 
     await request(createAppWithRedis())
       .delete("/admin/sessions/u1")
-      .set("Authorization", `Bearer ${adminToken()}`);
+      .set("Authorization", `Bearer ${token}`);
 
     const u2Sessions = await mockRedis.hgetall("sessions:u2");
     expect(Object.keys(u2Sessions!)).toContain("s2");

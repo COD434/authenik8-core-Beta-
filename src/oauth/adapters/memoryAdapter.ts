@@ -1,20 +1,14 @@
 import { randomUUID } from "crypto";
+import type { IdentityUser, OAuthIdentityAdapter } from "../identity/types";
 
-type Provider = {
-  provider: string;
-  providerId: string;
+type MemoryIdentityAdapter = OAuthIdentityAdapter & {
+  reset(): void;
+  dump(): IdentityUser[];
 };
 
-type User = {
-  id: string;
-  email: string;
-  providers: Provider[];
-};
+const users = new Map<string, IdentityUser>();
 
-
-const users = new Map<string, User>();
-
-export const memoryAdapter = {
+export const memoryAdapter: MemoryIdentityAdapter = {
   async findUserByEmail(email: string) {
     return [...users.values()].find((u) => u.email === email) || null;
   },
@@ -34,7 +28,7 @@ export const memoryAdapter = {
     provider: string;
     providerId: string;
   }) {
-    const user: User = {
+    const user: IdentityUser = {
       id: randomUUID(),
       email: data.email,
       providers: [

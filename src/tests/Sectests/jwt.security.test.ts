@@ -28,11 +28,12 @@ const mockRedis = {
   },
 };
 
-const makeService = (withRedis = false) =>
+const makeService = (withRedis = false, allowCookieAuth = false) =>
   new JWTService({
     jwtSecret: SECRET,
     expiry: "1h",
     redisClient: withRedis ? mockRedis : undefined,
+    allowCookieAuth,
   });
 
 
@@ -150,8 +151,16 @@ describe("authenticateJWT — middleware", () => {
     expect(next).toHaveBeenCalled();
   });
 
-  it("calls next() for a valid cookie token", async () => {
+  it("rejects a valid cookie token by default", async () => {
     const svc = makeService();
+    const token = await svc.signToken({ userId: "u1", email: "a@b.com" });
+    const { res, next } = await run(svc, token, "cookie");
+    expect(res.statusCode).toBe(401);
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it("calls next() for a valid cookie token only when cookie auth is enabled", async () => {
+    const svc = makeService(false, true);
     const token = await svc.signToken({ userId: "u1", email: "a@b.com" });
     const { next } = await run(svc, token, "cookie");
     expect(next).toHaveBeenCalled();
@@ -208,4 +217,3 @@ describe("authenticateJWT — middleware", () => {
     expect((req as any).user.userId).toBe("u1");
   });
 });
-
