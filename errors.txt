@@ -1,0 +1,8 @@
+> tsc --noEmit -p tsconfig.typecheck.json
+sh: 1: tsc: not found
+npm error code 127
+npm error path /builds/COD434/authenik8-core
+npm error command failed
+npm error command sh -c npm run typecheck && npm test && npm run build
+npm error A complete log of this run can be found in: /builds/COD434/authenik8-core/.npm/_logs/2026-07-15T15_06_43_832Z-debug-0.log
+Cleaning up project directory and file bas
