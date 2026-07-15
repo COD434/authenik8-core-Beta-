@@ -1,5 +1,10 @@
+<div align="center">
+
+<img src="./logo.svg" alt="Authenik8" width="180" />
+
 # Authenik8-core [Beta]
 
+</div>
 
 
 [![Pipeline status](https://gitlab.com/COD434/authenik8-core/badges/main/pipeline.svg)](https://gitlab.com/COD434/authenik8-core/-/pipelines)
