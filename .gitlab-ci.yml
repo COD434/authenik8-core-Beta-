@@ -184,6 +184,9 @@ publish:
   before_script:
     - node --version
     - npm --version
+    # This job overrides default.before_script, so install the compiler and test
+    # tooling required by package.json's prepublishOnly safety gate.
+    - npm ci --include=dev --prefer-offline
     - 'echo "Token length: ${#NPM_TOKEN}"'
   script:
     - npm config set //registry.npmjs.org/:_authToken ${NPM_TOKEN}
