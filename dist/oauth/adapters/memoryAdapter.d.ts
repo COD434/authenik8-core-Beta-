@@ -1,4 +1,4 @@
-import type { IdentityUser, OAuthIdentityAdapter } from "../identity/types";
+import type { IdentityUser, OAuthIdentityAdapter } from "../types";
 type MemoryIdentityAdapter = OAuthIdentityAdapter & {
     reset(): void;
     dump(): IdentityUser[];

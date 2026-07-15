@@ -1,5 +1,5 @@
 import { IdentityEngine } from "../types";
-import { IdentityContext, IdentityResult } from "../identity/types";
+import { IdentityContext, IdentityResult } from "../types";
 import { identityPolicy } from "./identityPolicy";
 import { randomUUID } from "crypto";
 
@@ -140,13 +140,14 @@ const canAutoLink = (emailVerified: boolean | string): boolean => {
 };
 
 const issueTokensForUser = async (
-  user: { id: string; email: string },
+  user: { id: string; email: string; role?: string },
   tokenService: TokenService
 ) => {
   const payload = {
     userId: user.id,
     email: user.email,
     sessionId: randomUUID(),
+    ...(typeof user.role === "string" ? { role: user.role.toLowerCase() } : {}),
   };
 
   return {

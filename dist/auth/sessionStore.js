@@ -1,7 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.SessionStore = void 0;
-const sessionKey = (userId) => `sessions:${userId}`;
 const parseSession = (value) => {
     if (!value)
         return null;
@@ -22,39 +21,43 @@ const metadataFromSession = (session) => ({
     createdAt: session.createdAt,
 });
 class SessionStore {
-    constructor(redis) {
+    constructor(redis, namespace = "sessions") {
         this.redis = redis;
+        this.namespace = namespace;
     }
-    async list(userId) {
+    sessionKey(principalId) {
+        return `${this.namespace}:${principalId}`;
+    }
+    async list(principalId) {
         if (!this.redis?.hgetall)
             return [];
-        const sessions = await this.redis.hgetall(sessionKey(userId));
+        const sessions = await this.redis.hgetall(this.sessionKey(principalId));
         return Object.values(sessions || {})
             .map(parseSession)
             .filter((session) => !!session)
             .map(metadataFromSession);
     }
-    async get(userId, sessionId) {
+    async get(principalId, sessionId) {
         if (!this.redis)
             return null;
         if (this.redis.hget) {
-            return parseSession(await this.redis.hget(sessionKey(userId), sessionId));
+            return parseSession(await this.redis.hget(this.sessionKey(principalId), sessionId));
         }
         if (!this.redis.hgetall)
             return null;
-        const sessions = await this.redis.hgetall(sessionKey(userId));
+        const sessions = await this.redis.hgetall(this.sessionKey(principalId));
         return parseSession(sessions?.[sessionId]);
     }
-    async upsert(userId, token, metadata, ttlSeconds) {
+    async upsert(principalId, token, metadata, ttlSeconds) {
         if (!this.redis?.hset)
             return;
-        await this.redis.hset(sessionKey(userId), metadata.sessionId, JSON.stringify({ token, ...metadata }));
+        await this.redis.hset(this.sessionKey(principalId), metadata.sessionId, JSON.stringify({ token, ...metadata }));
         if (this.redis.expire) {
-            await this.redis.expire(sessionKey(userId), ttlSeconds);
+            await this.redis.expire(this.sessionKey(principalId), ttlSeconds);
         }
     }
-    async updateToken(userId, sessionId, token, ttlSeconds, defaults) {
-        const existing = await this.get(userId, sessionId);
+    async updateToken(principalId, sessionId, token, ttlSeconds, defaults) {
+        const existing = await this.get(principalId, sessionId);
         const metadata = existing
             ? metadataFromSession(existing)
             : {
@@ -63,21 +66,21 @@ class SessionStore {
                 ip: defaults?.ip ?? "unknown",
                 createdAt: defaults?.createdAt ?? Date.now(),
             };
-        await this.upsert(userId, token, metadata, ttlSeconds);
+        await this.upsert(principalId, token, metadata, ttlSeconds);
     }
-    async tokenMatches(userId, sessionId, token) {
-        const session = await this.get(userId, sessionId);
+    async tokenMatches(principalId, sessionId, token) {
+        const session = await this.get(principalId, sessionId);
         return session?.token === token;
     }
-    async revoke(userId, sessionId) {
+    async revoke(principalId, sessionId) {
         if (!this.redis?.hdel)
             return;
-        await this.redis.hdel(sessionKey(userId), sessionId);
+        await this.redis.hdel(this.sessionKey(principalId), sessionId);
     }
-    async revokeAll(userId) {
+    async revokeAll(principalId) {
         if (!this.redis?.del)
             return;
-        await this.redis.del(sessionKey(userId));
+        await this.redis.del(this.sessionKey(principalId));
     }
 }
 exports.SessionStore = SessionStore;

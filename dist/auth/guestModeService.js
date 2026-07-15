@@ -1,34 +1,40 @@
 "use strict";
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.createIncognito = void 0;
-const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
+const jwtAuth_1 = require("./jwtAuth");
 const createIncognito = (options) => {
-    return (req, res, next) => {
+    const legacyVerifier = options.jwtSecret
+        ? new jwtAuth_1.JWTService({ jwtSecret: options.jwtSecret })
+        : undefined;
+    const verifyAccessToken = options.verifyAccessToken ?? legacyVerifier?.verifyToken.bind(legacyVerifier);
+    const verifyGuestToken = options.verifyGuestToken ?? legacyVerifier?.verifyGuestToken.bind(legacyVerifier);
+    if (!verifyAccessToken || !verifyGuestToken) {
+        throw new Error("Incognito mode requires token verification functions");
+    }
+    return async (req, res, next) => {
         const authHeader = req.headers.authorization;
         const token = authHeader?.startsWith("Bearer ")
-            ? authHeader.split(" ")[1]
+            ? authHeader.slice("Bearer ".length).trim()
             : undefined;
         if (!token) {
-            const guestToken = options.guestToken();
-            const user = jsonwebtoken_1.default.verify(guestToken, options.jwtSecret);
+            const guestToken = await options.guestToken();
+            const user = await verifyGuestToken(guestToken);
+            if (!user) {
+                return res.status(500).json({ error: "Unable to issue guest token" });
+            }
             req.user = user;
             res.setHeader("X-Guest-Token", guestToken);
             return next();
         }
-        try {
-            const user = jsonwebtoken_1.default.verify(token, options.jwtSecret);
-            req.user = {
-                ...user,
-                type: user.type ?? "authenticated",
-            };
-            return next();
-        }
-        catch {
+        const user = await verifyAccessToken(token);
+        if (!user) {
             return res.status(401).json({ error: "Invalid or expired token" });
         }
+        req.user = {
+            ...user,
+            type: user.type ?? "authenticated",
+        };
+        return next();
     };
 };
 exports.createIncognito = createIncognito;

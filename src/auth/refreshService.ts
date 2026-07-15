@@ -1,11 +1,9 @@
-import jwt from "jsonwebtoken";
-import { SignOptions } from "jsonwebtoken";
 import { randomUUID } from "crypto";
-import { RedisLock } from "../utility/lockHelper";
+import { JwtKeyRing } from "./jwk";
 import { SessionStore } from "./sessionStore";
+import { RedisLock } from "../utility/lockHelper";
 
 const DEFAULT_REFRESH_TTL_SECONDS = 60 * 60 * 24 * 7;
-const SESSION_TTL_FALLBACK_SECONDS = 3600;
 const REFRESH_LOCK_TTL_MS = 5000;
 
 export class MissingTokenError extends Error {
@@ -23,10 +21,16 @@ export class InvalidTokenError extends Error {
 }
 
 interface RefreshTokenPayload {
+  [key: string]: unknown;
   userId: string;
   email: string;
   sessionId?: string;
+  tokenUse?: string;
 }
+
+type RequiredRefreshPayload = Required<
+  Pick<RefreshTokenPayload, "userId" | "email" | "sessionId">
+>;
 
 export interface TokenStore {
   get(key: string): Promise<string | null>;
@@ -36,16 +40,17 @@ export interface TokenStore {
     key: string,
     expected: string,
     value: string,
-    expiry?: number
+    expiry?: number,
   ): Promise<boolean>;
 }
 
 export interface RefreshServiceOptions {
   tokenStore: TokenStore;
-  accessTokenSecret: string;
   redisClient: any;
   refreshTokenSecret: string;
-  accessTokenExpiry: SignOptions["expiresIn"];
+  accessTokenSigner: (payload: RequiredRefreshPayload) => Promise<string>;
+  issuer: string;
+  audience: string | string[];
   rotateRefreshTokens?: boolean;
   refreshTokenExpiry?: string | number;
 }
@@ -57,23 +62,27 @@ export interface RefreshResult {
 
 export class RefreshService {
   private readonly tokenStore: TokenStore;
-  private readonly accessTokenSecret: string;
-  private readonly refreshTokenSecret: string;
-  private readonly accessTokenExpiry: SignOptions["expiresIn"];
+  private readonly accessTokenSigner: RefreshServiceOptions["accessTokenSigner"];
   private readonly rotateRefreshTokens: boolean;
   private readonly refreshTokenExpiry: string | number;
   private readonly lock: RedisLock;
   private readonly sessionStore: SessionStore;
+  private readonly refreshKeys: JwtKeyRing;
+  private readonly redisClient: any;
 
   constructor(options: RefreshServiceOptions) {
     this.tokenStore = options.tokenStore;
-    this.accessTokenSecret = options.accessTokenSecret;
-    this.refreshTokenSecret = options.refreshTokenSecret;
-    this.accessTokenExpiry = options.accessTokenExpiry ?? "15m";
+    this.redisClient = options.redisClient;
+    this.accessTokenSigner = options.accessTokenSigner;
     this.rotateRefreshTokens = options.rotateRefreshTokens ?? false;
     this.refreshTokenExpiry = options.refreshTokenExpiry ?? "7d";
     this.lock = new RedisLock(options.redisClient);
     this.sessionStore = new SessionStore(options.redisClient);
+    this.refreshKeys = new JwtKeyRing({
+      legacySecret: options.refreshTokenSecret,
+      issuer: options.issuer,
+      audience: options.audience,
+    });
   }
 
   async generateRefreshToken(payload: RefreshTokenPayload): Promise<string> {
@@ -81,30 +90,29 @@ export class RefreshService {
       throw new Error("generateRefreshToken: payload.userId is missing");
     }
 
-    const sessionId = payload.sessionId ?? randomUUID();
-    const token = this.signRefreshToken({
+    const tokenPayload: RequiredRefreshPayload = {
       userId: payload.userId,
       email: payload.email,
-      sessionId,
-    });
+      sessionId: payload.sessionId ?? randomUUID(),
+    };
+    const token = await this.signRefreshToken(tokenPayload);
 
     if (this.tokenStore.set) {
       await this.tokenStore.set(
-        this.refreshKey(payload.userId, sessionId),
+        this.refreshKey(tokenPayload.userId, tokenPayload.sessionId),
         token,
-        this.refreshTokenTtlSeconds()
+        this.refreshTokenTtlSeconds(),
       );
+      await this.trackRefreshFamily(tokenPayload.userId, tokenPayload.sessionId);
     }
 
     return token;
   }
 
   async refresh(refreshToken?: string): Promise<RefreshResult> {
-    if (!refreshToken) {
-      throw new MissingTokenError();
-    }
+    if (!refreshToken) throw new MissingTokenError();
 
-    const decoded = this.verifyRefreshToken(refreshToken);
+    const decoded = await this.verifyRefreshToken(refreshToken);
     const lockKey = this.lockKey(decoded.userId, decoded.sessionId);
     const lockValue = await this.lock.acquire(lockKey, REFRESH_LOCK_TTL_MS);
 
@@ -124,15 +132,9 @@ export class RefreshService {
       const newRefreshToken = await this.rotateTokenIfEnabled(
         key,
         refreshToken,
-        decoded
+        decoded,
       );
-      const newAccessToken = this.signAccessToken(decoded);
-
-      await this.persistSessionToken(
-        decoded.userId,
-        decoded.sessionId,
-        newAccessToken
-      );
+      const newAccessToken = await this.accessTokenSigner(decoded);
 
       return {
         accessToken: newAccessToken,
@@ -143,25 +145,51 @@ export class RefreshService {
     }
   }
 
+  async revokeSession(userId: string, sessionId: string): Promise<void> {
+    await this.revokeRefreshFamily(userId, sessionId);
+  }
+
+  async revokeAllSessions(
+    userId: string,
+    fallbackSessionIds: string[] = [],
+  ): Promise<void> {
+    const indexedFamilies = this.redisClient?.hgetall
+      ? await this.redisClient.hgetall(this.refreshFamilyIndexKey(userId))
+      : null;
+    const sessionIds = new Set([
+      ...fallbackSessionIds,
+      ...Object.keys(indexedFamilies || {}),
+    ]);
+
+    if (this.tokenStore.del) {
+      await Promise.all(
+        [...sessionIds].map((sessionId) =>
+          this.tokenStore.del!(this.refreshKey(userId, sessionId)),
+        ),
+      );
+    }
+    if (this.redisClient?.del) {
+      await this.redisClient.del(this.refreshFamilyIndexKey(userId));
+    }
+    await this.sessionStore.revokeAll(userId);
+  }
+
   private async rotateTokenIfEnabled(
     key: string,
     currentRefreshToken: string,
-    decoded: Required<Pick<RefreshTokenPayload, "userId" | "email" | "sessionId">>
+    decoded: RequiredRefreshPayload,
   ): Promise<string | undefined> {
-    if (!this.rotateRefreshTokens) {
-      return undefined;
-    }
-
+    if (!this.rotateRefreshTokens) return undefined;
     if (!this.tokenStore.compareAndSet) {
       throw new Error("TokenStore must implement compareAndSet for atomic refresh rotation");
     }
 
-    const newRefreshToken = this.signRefreshToken(decoded);
+    const newRefreshToken = await this.signRefreshToken(decoded);
     const rotated = await this.tokenStore.compareAndSet(
       key,
       currentRefreshToken,
       newRefreshToken,
-      this.refreshTokenTtlSeconds()
+      this.refreshTokenTtlSeconds(),
     );
 
     if (!rotated) {
@@ -172,72 +200,58 @@ export class RefreshService {
     return newRefreshToken;
   }
 
-  private verifyRefreshToken(
-    refreshToken: string
-  ): Required<Pick<RefreshTokenPayload, "userId" | "email" | "sessionId">> {
-    let decoded: RefreshTokenPayload;
-
+  private async verifyRefreshToken(
+    refreshToken: string,
+  ): Promise<RequiredRefreshPayload> {
     try {
-      decoded = jwt.verify(
+      const decoded = await this.refreshKeys.verify<RefreshTokenPayload>(
         refreshToken,
-        this.refreshTokenSecret
-      ) as RefreshTokenPayload;
-    } catch {
+        "refresh",
+      );
+
+      if (!decoded.userId || !decoded.email || !decoded.sessionId) {
+        throw new InvalidTokenError();
+      }
+
+      return {
+        userId: decoded.userId,
+        email: decoded.email,
+        sessionId: decoded.sessionId,
+      };
+    } catch (error) {
+      if (error instanceof InvalidTokenError) throw error;
       throw new InvalidTokenError();
     }
-
-    if (!decoded.userId || !decoded.email || !decoded.sessionId) {
-      throw new InvalidTokenError();
-    }
-
-    return {
-      userId: decoded.userId,
-      email: decoded.email,
-      sessionId: decoded.sessionId,
-    };
   }
 
-  private signRefreshToken(
-    payload: Required<Pick<RefreshTokenPayload, "userId" | "email" | "sessionId">>
-  ): string {
-    return jwt.sign(
-      { ...payload, jti: randomUUID() },
-      this.refreshTokenSecret,
-      { expiresIn: this.refreshTokenExpiry as SignOptions["expiresIn"] }
-    );
-  }
-
-  private signAccessToken(
-    payload: Required<Pick<RefreshTokenPayload, "userId" | "email" | "sessionId">>
-  ): string {
-    return jwt.sign(payload, this.accessTokenSecret, {
-      expiresIn: this.accessTokenExpiry as SignOptions["expiresIn"],
+  private signRefreshToken(payload: RequiredRefreshPayload): Promise<string> {
+    return this.refreshKeys.sign(payload, {
+      expiresIn: this.refreshTokenExpiry,
+      tokenUse: "refresh",
     });
-  }
-
-  private async persistSessionToken(
-    userId: string,
-    sessionId: string,
-    token: string
-  ): Promise<void> {
-    const decoded = jwt.decode(token) as { exp?: number } | null;
-    const now = Math.floor(Date.now() / 1000);
-    const ttl = decoded?.exp
-      ? Math.max(decoded.exp - now, 1)
-      : SESSION_TTL_FALLBACK_SECONDS;
-
-    await this.sessionStore.updateToken(userId, sessionId, token, ttl);
   }
 
   private async revokeRefreshFamily(
     userId: string,
-    sessionId: string
+    sessionId: string,
   ): Promise<void> {
     if (this.tokenStore.del) {
       await this.tokenStore.del(this.refreshKey(userId, sessionId));
     }
-
+    if (this.redisClient?.hdel) {
+      await this.redisClient.hdel(this.refreshFamilyIndexKey(userId), sessionId);
+    }
     await this.sessionStore.revoke(userId, sessionId);
+  }
+
+  private async trackRefreshFamily(userId: string, sessionId: string): Promise<void> {
+    if (!this.redisClient?.hset) return;
+
+    const key = this.refreshFamilyIndexKey(userId);
+    await this.redisClient.hset(key, sessionId, "1");
+    if (this.redisClient.expire) {
+      await this.redisClient.expire(key, this.refreshTokenTtlSeconds());
+    }
   }
 
   private refreshTokenTtlSeconds(): number {
@@ -246,10 +260,7 @@ export class RefreshService {
     }
 
     const match = /^(\d+)([smhd])$/.exec(this.refreshTokenExpiry);
-    if (!match) {
-      return DEFAULT_REFRESH_TTL_SECONDS;
-    }
-
+    if (!match) return DEFAULT_REFRESH_TTL_SECONDS;
     const amount = Number(match[1]);
 
     switch (match[2]) {
@@ -268,6 +279,10 @@ export class RefreshService {
 
   private refreshKey(userId: string, sessionId: string): string {
     return `refresh:${userId}:${sessionId}`;
+  }
+
+  private refreshFamilyIndexKey(userId: string): string {
+    return `refresh-families:${userId}`;
   }
 
   private lockKey(userId: string, sessionId: string): string {

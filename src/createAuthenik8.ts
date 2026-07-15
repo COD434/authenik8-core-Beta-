@@ -1,4 +1,5 @@
 import { randomUUID } from "crypto";
+import { AgentIdentityService } from "./agent/agentIdentity";
 import { RefreshService } from "./auth/refreshService";
 import { createIncognito } from "./auth/guestModeService";
 import { JWTService } from "./auth/jwtAuth";
@@ -23,22 +24,37 @@ export const createAuthenik8 = async (
   const tokenStore = new RedisTokenStore(redisClient);
   const accessTokenExpiry = config.jwtExpiry ?? DEFAULT_ACCESS_TOKEN_EXPIRY;
 
-  const refreshService = new RefreshService({
-    tokenStore,
-    redisClient,
-    accessTokenSecret: config.jwtSecret,
-    refreshTokenSecret: config.refreshSecret,
-    accessTokenExpiry,
-    rotateRefreshTokens: true,
-    refreshTokenExpiry: config.jwtExpiry ?? DEFAULT_REFRESH_TOKEN_EXPIRY,
-  });
-
   const jwtService = new JWTService({
     jwtSecret: config.jwtSecret,
+    jwk: config.jwt,
     expiry: accessTokenExpiry,
     redisClient,
     allowCookieAuth: config.allowCookieAuth ?? false,
   });
+
+  const refreshService = new RefreshService({
+    tokenStore,
+    redisClient,
+    refreshTokenSecret: config.refreshSecret,
+    accessTokenSigner: (payload) => jwtService.signToken(payload),
+    issuer: jwtService.issuer,
+    audience: jwtService.audience,
+    rotateRefreshTokens: true,
+    refreshTokenExpiry: DEFAULT_REFRESH_TOKEN_EXPIRY,
+  });
+
+  const agent = config.agent
+    ? new AgentIdentityService({
+        config: config.agent,
+        redisClient,
+        jwk: config.jwt,
+        legacySecret: config.jwtSecret,
+        issuer: jwtService.issuer,
+        audience: jwtService.audience,
+        verifyHumanToken: jwtService.verifyActiveToken.bind(jwtService),
+        hasHumanSession: jwtService.hasActiveSession.bind(jwtService),
+      })
+    : undefined;
 
   const issueTokens = async (payload: TokenPayload): Promise<TokenPair> => {
     const sessionId = payload.sessionId ?? randomUUID();
@@ -56,6 +72,18 @@ export const createAuthenik8 = async (
   const tokenService = {
     signAccessToken: jwtService.signToken.bind(jwtService),
     generateRefreshToken: refreshService.generateRefreshToken.bind(refreshService),
+  };
+
+  const revokeSession = async (userId: string, sessionId: string) => {
+    await refreshService.revokeSession(userId, sessionId);
+  };
+
+  const revokeAllSessions = async (userId: string) => {
+    const sessions = await jwtService.listSessions(userId);
+    await refreshService.revokeAllSessions(
+      userId,
+      sessions.map((session) => session.sessionId),
+    );
   };
 
   const identityEngine = createIdentityEngine(
@@ -83,7 +111,13 @@ export const createAuthenik8 = async (
     redisclient: redisClient,
     signToken: jwtService.signToken.bind(jwtService),
     verifyToken: jwtService.verifyToken.bind(jwtService),
+    requireAuth: jwtService.authenticateJWT,
     guestToken: jwtService.guestToken.bind(jwtService),
+    getJwks: jwtService.getJwks.bind(jwtService),
+    listSessions: jwtService.listSessions.bind(jwtService),
+    revokeSession,
+    revokeAllSessions,
+    agent,
 
     refreshToken: refreshService.refresh.bind(refreshService),
     generateRefreshToken: refreshService.generateRefreshToken.bind(refreshService),
@@ -96,13 +130,16 @@ export const createAuthenik8 = async (
     listIPs: security.listIPs.bind(security),
 
     requireAdmin: requireAdmin({
-      jwtSecret: config.jwtSecret,
+      requireAuth: jwtService.authenticateJWT,
       store: redisClient,
-      allowCookieAuth: config.allowCookieAuth ?? false,
+      listSessions: jwtService.listSessions.bind(jwtService),
+      revokeSession,
+      revokeAllSessions,
     }),
     incognito: createIncognito({
-      jwtSecret: config.jwtSecret,
       guestToken: jwtService.guestToken.bind(jwtService),
+      verifyAccessToken: jwtService.verifyToken.bind(jwtService),
+      verifyGuestToken: jwtService.verifyGuestToken.bind(jwtService),
     }),
     oauth,
     issueTokens,

@@ -2,7 +2,7 @@ import { OAuth2Client } from "google-auth-library";
 import { Request, Response } from "express";
 import crypto from "crypto";
 import { finalizeOAuthCallback } from "../callback";
-import type { OAuthStateStore } from "../identity/types";
+import type { OAuthStateStore } from "../types";
 import {
   OAuthCallbackResult,
   OAuthProfile,
@@ -50,7 +50,7 @@ export function createGoogleProvider(
       const code = req.query.code as string;
       const state = req.query.state as string;
 
-      if (!state) {
+      if (!state ) {
         throw new Error("OAuthError:Missing state");
       }
 

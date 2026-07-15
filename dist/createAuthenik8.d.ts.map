@@ -1,1 +1,1 @@
-{"version":3,"file":"createAuthenik8.d.ts","sourceRoot":"","sources":["../src/createAuthenik8.ts"],"names":[],"mappings":"AAWA,OAAO,EAAE,eAAe,EAAE,MAAM,gBAAgB,CAAC;AACjD,OAAO,EAAE,iBAAiB,EAAE,MAAM,gBAAgB,CAAC;AAMnD,eAAO,MAAM,eAAe,GAC1B,QAAQ,eAAe,KACtB,OAAO,CAAC,iBAAiB,CAyF3B,CAAC"}
+{"version":3,"file":"createAuthenik8.d.ts","sourceRoot":"","sources":["../src/createAuthenik8.ts"],"names":[],"mappings":"AAYA,OAAO,EAAE,eAAe,EAAE,MAAM,gBAAgB,CAAC;AACjD,OAAO,EAAE,iBAAiB,EAAE,MAAM,gBAAgB,CAAC;AAMnD,eAAO,MAAM,eAAe,GAC1B,QAAQ,eAAe,KACtB,OAAO,CAAC,iBAAiB,CA6H3B,CAAC"}

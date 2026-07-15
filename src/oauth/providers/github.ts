@@ -1,7 +1,7 @@
 import crypto from "crypto";
 import { Request, Response } from "express";
 import { finalizeOAuthCallback } from "../callback";
-import type { OAuthStateStore } from "../identity/types";
+import type { OAuthStateStore } from "../types";
 import {
   GitHubOAuthConfig,
   IdentityEngine,

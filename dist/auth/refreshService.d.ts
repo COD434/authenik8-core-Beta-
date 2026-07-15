@@ -1,4 +1,3 @@
-import { SignOptions } from "jsonwebtoken";
 export declare class MissingTokenError extends Error {
     constructor(message?: string);
 }
@@ -6,10 +5,13 @@ export declare class InvalidTokenError extends Error {
     constructor(message?: string);
 }
 interface RefreshTokenPayload {
+    [key: string]: unknown;
     userId: string;
     email: string;
     sessionId?: string;
+    tokenUse?: string;
 }
+type RequiredRefreshPayload = Required<Pick<RefreshTokenPayload, "userId" | "email" | "sessionId">>;
 export interface TokenStore {
     get(key: string): Promise<string | null>;
     set?(key: string, value: string, expiry?: number): Promise<void>;
@@ -18,10 +20,11 @@ export interface TokenStore {
 }
 export interface RefreshServiceOptions {
     tokenStore: TokenStore;
-    accessTokenSecret: string;
     redisClient: any;
     refreshTokenSecret: string;
-    accessTokenExpiry: SignOptions["expiresIn"];
+    accessTokenSigner: (payload: RequiredRefreshPayload) => Promise<string>;
+    issuer: string;
+    audience: string | string[];
     rotateRefreshTokens?: boolean;
     refreshTokenExpiry?: string | number;
 }
@@ -31,24 +34,26 @@ export interface RefreshResult {
 }
 export declare class RefreshService {
     private readonly tokenStore;
-    private readonly accessTokenSecret;
-    private readonly refreshTokenSecret;
-    private readonly accessTokenExpiry;
+    private readonly accessTokenSigner;
     private readonly rotateRefreshTokens;
     private readonly refreshTokenExpiry;
     private readonly lock;
     private readonly sessionStore;
+    private readonly refreshKeys;
+    private readonly redisClient;
     constructor(options: RefreshServiceOptions);
     generateRefreshToken(payload: RefreshTokenPayload): Promise<string>;
     refresh(refreshToken?: string): Promise<RefreshResult>;
+    revokeSession(userId: string, sessionId: string): Promise<void>;
+    revokeAllSessions(userId: string, fallbackSessionIds?: string[]): Promise<void>;
     private rotateTokenIfEnabled;
     private verifyRefreshToken;
     private signRefreshToken;
-    private signAccessToken;
-    private persistSessionToken;
     private revokeRefreshFamily;
+    private trackRefreshFamily;
     private refreshTokenTtlSeconds;
     private refreshKey;
+    private refreshFamilyIndexKey;
     private lockKey;
 }
 export {};

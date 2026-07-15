@@ -47,13 +47,13 @@ async function start() {
   // =========================
   // AUTH MIDDLEWARE
   // =========================
-  function requireAuth(req: Request, res: Response, next: NextFunction) {
+  async function requireAuth(req: Request, res: Response, next: NextFunction) {
     const token = req.headers.authorization?.split(" ")[1];
 
     if (!token) return res.status(401).json({ error: "Unauthorized" });
 
     try {
-      req.user = auth.verifyToken(token);
+      req.user = ((await auth.verifyToken(token)) as TokenPayload | null) ?? undefined;
       next();
     } catch {
       return res.status(401).json({ error: "Invalid token" });

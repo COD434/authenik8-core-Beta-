@@ -96,6 +96,7 @@ const issueTokensForUser = async (user, tokenService) => {
         userId: user.id,
         email: user.email,
         sessionId: (0, crypto_1.randomUUID)(),
+        ...(typeof user.role === "string" ? { role: user.role.toLowerCase() } : {}),
     };
     return {
         accessToken: await tokenService.signAccessToken(payload),

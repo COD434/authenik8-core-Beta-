@@ -1,7 +1,6 @@
 
 import helmet from  "helmet";
 import Redis from "ioredis";
-import type {StringValue} from "ms"
 import { RequestHandler } from "express";
 import {RateLimiterRedis} from "rate-limiter-flexible";
 import { Request, Response, NextFunction } from "express";
@@ -11,7 +10,6 @@ import { Address4, Address6 } from 'ip-address';
 
 const WHITELIST_KEY ="whitelist:ips";
 const IP_EXPIRATION_SECONDS = 7 * 24 * 60 * 60;
-const DEFAULT_JWT_EXPIRY = "1h"
 const whitelistEntryKey = (entry: string) =>
   `${WHITELIST_KEY}:entry:${encodeURIComponent(entry)}`;
 
@@ -28,13 +26,8 @@ middleware: () => (req:Request, res: Response, next:any)=> Promise<void>;
 listIP:(ip:string)=> Promise<void>;
 }
 
-const JWT_SECRET =process.env.JWT_SECRET || "Boo";
-const EXPIRY = "1h";
-
 export interface SecurityOptions{
  redisClient?: Redis;
-jwtSecret?:string;
-jwtExpiry?:StringValue;
 rateLimitPoints?:number;
 rateLimitDuration?:number;
 rateLimitBlock?:number;
@@ -49,8 +42,6 @@ trustProxyHeaders?:boolean;
 
 export class SecurityModule{
 private redisClient:Redis;
-private jwtSecret:string;
-private jwtExpiry:StringValue;
 private rateLimiter?: RateLimiterRedis;
 private whiteListEnabled:boolean;
 private helmetEnabled:boolean;
@@ -60,8 +51,6 @@ private trustProxyHeaders:boolean;
 
 constructor(options: SecurityOptions = {})
 {
-this.jwtSecret=options.jwtSecret || process.env.JWT_SECRET ||  "Boo" ;
-this.jwtExpiry = options.jwtExpiry ||  DEFAULT_JWT_EXPIRY;
 this.whiteListEnabled = options.whiteListEnabled ?? true;
 this.helmetEnabled = options.helmetEnabled ?? true;
 this.rateLimiterEnabled = options.rateLimiterEnabled ?? true;

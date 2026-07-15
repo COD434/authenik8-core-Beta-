@@ -1,7 +1,7 @@
 import { randomUUID } from "crypto";
 import type { Redis } from "ioredis";
 import { RedisLock } from "../../utility/lockHelper";
-import type { IdentityUser, OAuthIdentityAdapter } from "../identity/types";
+import type { IdentityUser, OAuthIdentityAdapter } from "../types";
 
 const PREFIX = "oauth:v1";
 

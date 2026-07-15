@@ -18,8 +18,6 @@ export type SessionRedisClient = {
   expire?: (key: string, seconds: number) => Promise<unknown>;
 };
 
-const sessionKey = (userId: string) => `sessions:${userId}`;
-
 const parseSession = (value: string | null | undefined): StoredSession | null => {
   if (!value) return null;
 
@@ -40,33 +38,42 @@ const metadataFromSession = (session: StoredSession): SessionMetadata => ({
 });
 
 export class SessionStore {
-  constructor(private readonly redis?: SessionRedisClient) {}
+  constructor(
+    private readonly redis?: SessionRedisClient,
+    private readonly namespace = "sessions",
+  ) {}
 
-  async list(userId: string): Promise<SessionMetadata[]> {
+  private sessionKey(principalId: string): string {
+    return `${this.namespace}:${principalId}`;
+  }
+
+  async list(principalId: string): Promise<SessionMetadata[]> {
     if (!this.redis?.hgetall) return [];
 
-    const sessions = await this.redis.hgetall(sessionKey(userId));
+    const sessions = await this.redis.hgetall(this.sessionKey(principalId));
     return Object.values(sessions || {})
       .map(parseSession)
       .filter((session): session is StoredSession => !!session)
       .map(metadataFromSession);
   }
 
-  async get(userId: string, sessionId: string): Promise<StoredSession | null> {
+  async get(principalId: string, sessionId: string): Promise<StoredSession | null> {
     if (!this.redis) return null;
 
     if (this.redis.hget) {
-      return parseSession(await this.redis.hget(sessionKey(userId), sessionId));
+      return parseSession(
+        await this.redis.hget(this.sessionKey(principalId), sessionId),
+      );
     }
 
     if (!this.redis.hgetall) return null;
 
-    const sessions = await this.redis.hgetall(sessionKey(userId));
+    const sessions = await this.redis.hgetall(this.sessionKey(principalId));
     return parseSession(sessions?.[sessionId]);
   }
 
   async upsert(
-    userId: string,
+    principalId: string,
     token: string,
     metadata: SessionMetadata,
     ttlSeconds: number
@@ -74,24 +81,24 @@ export class SessionStore {
     if (!this.redis?.hset) return;
 
     await this.redis.hset(
-      sessionKey(userId),
+      this.sessionKey(principalId),
       metadata.sessionId,
       JSON.stringify({ token, ...metadata })
     );
 
     if (this.redis.expire) {
-      await this.redis.expire(sessionKey(userId), ttlSeconds);
+      await this.redis.expire(this.sessionKey(principalId), ttlSeconds);
     }
   }
 
   async updateToken(
-    userId: string,
+    principalId: string,
     sessionId: string,
     token: string,
     ttlSeconds: number,
     defaults?: Partial<Omit<SessionMetadata, "sessionId">>
   ): Promise<void> {
-    const existing = await this.get(userId, sessionId);
+    const existing = await this.get(principalId, sessionId);
     const metadata: SessionMetadata = existing
       ? metadataFromSession(existing)
       : {
@@ -101,25 +108,25 @@ export class SessionStore {
           createdAt: defaults?.createdAt ?? Date.now(),
         };
 
-    await this.upsert(userId, token, metadata, ttlSeconds);
+    await this.upsert(principalId, token, metadata, ttlSeconds);
   }
 
   async tokenMatches(
-    userId: string,
+    principalId: string,
     sessionId: string,
     token: string
   ): Promise<boolean> {
-    const session = await this.get(userId, sessionId);
+    const session = await this.get(principalId, sessionId);
     return session?.token === token;
   }
 
-  async revoke(userId: string, sessionId: string): Promise<void> {
+  async revoke(principalId: string, sessionId: string): Promise<void> {
     if (!this.redis?.hdel) return;
-    await this.redis.hdel(sessionKey(userId), sessionId);
+    await this.redis.hdel(this.sessionKey(principalId), sessionId);
   }
 
-  async revokeAll(userId: string): Promise<void> {
+  async revokeAll(principalId: string): Promise<void> {
     if (!this.redis?.del) return;
-    await this.redis.del(sessionKey(userId));
+    await this.redis.del(this.sessionKey(principalId));
   }
 }

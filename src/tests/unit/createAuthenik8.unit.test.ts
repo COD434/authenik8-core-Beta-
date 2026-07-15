@@ -7,6 +7,7 @@ const {
   mockJwtService,
   mockSecurity,
   mockIdentityEngine,
+  mockAgentService,
 } = vi.hoisted(() => {
   const mockRedisClient = { on: vi.fn() };
   const mockTokenStore = {};
@@ -14,13 +15,25 @@ const {
   const mockRefreshService = {
     generateRefreshToken: vi.fn().mockResolvedValue('mock-refresh-token'),
     refresh: vi.fn(),
+    revokeSession: vi.fn(),
+    revokeAllSessions: vi.fn(),
   };
 
 
 const mockJwtService = {
   signToken: vi.fn().mockReturnValue('mock-access-token'),
   verifyToken: vi.fn(),
+  verifyActiveToken: vi.fn(),
+  hasActiveSession: vi.fn(),
+  verifyGuestToken: vi.fn(),
+  authenticateJWT: vi.fn(),
   guestToken: vi.fn(),
+  getJwks: vi.fn().mockReturnValue({ keys: [] }),
+  listSessions: vi.fn().mockResolvedValue([]),
+  revokeSession: vi.fn(),
+  revokeAllSessions: vi.fn(),
+  issuer: 'test-issuer',
+  audience: 'test-api',
 };
 
 const mockSecurity = {
@@ -36,7 +49,14 @@ const mockIdentityEngine = {
   resolveOAuth: vi.fn(),
 
 };
-return { mockRedisClient, mockTokenStore, mockRefreshService, mockJwtService, mockSecurity, mockIdentityEngine };
+const mockAgentService = {
+  issueToken: vi.fn(),
+  issueDelegatedToken: vi.fn(),
+  verifyToken: vi.fn(),
+  requireAgent: vi.fn(),
+  requireScopes: vi.fn(),
+};
+return { mockRedisClient, mockTokenStore, mockRefreshService, mockJwtService, mockSecurity, mockIdentityEngine, mockAgentService };
 })
 import { createOAuth } from '../../oauth/core';
 import { createRedisIdentityAdapter } from '../../oauth/adapters/redisAdapter';
@@ -93,6 +113,12 @@ vi.mock('../../oauth/adapters/redisAdapter', () => ({
   createRedisIdentityAdapter: vi.fn().mockReturnValue({}),
 }));
 
+vi.mock('../../agent/agentIdentity', () => ({
+  AgentIdentityService: vi.fn().mockImplementation(function () {
+    return mockAgentService;
+  }),
+}));
+
 
 const baseConfig = {
   jwtSecret: 'test-secret',
@@ -112,7 +138,12 @@ describe('createAuthenik8', () => {
       redisclient: expect.anything(),
       signToken: expect.any(Function),
       verifyToken: expect.any(Function),
+      requireAuth: expect.any(Function),
       guestToken: expect.any(Function),
+      getJwks: expect.any(Function),
+      listSessions: expect.any(Function),
+      revokeSession: expect.any(Function),
+      revokeAllSessions: expect.any(Function),
       refreshToken: expect.any(Function),
       generateRefreshToken: expect.any(Function),
       rateLimit: expect.any(Function),
@@ -162,6 +193,26 @@ describe('createAuthenik8', () => {
   it('leaves oauth undefined when config.oauth is not provided', async () => {
     const instance = await createAuthenik8(baseConfig);
     expect(instance.oauth).toBeUndefined();
+  });
+
+  it('enables agent identity only when an agent registry is configured', async () => {
+    const { AgentIdentityService } = await import('../../agent/agentIdentity');
+    const disabled = await createAuthenik8(baseConfig);
+    expect(disabled.agent).toBeUndefined();
+
+    const resolveAgent = vi.fn().mockResolvedValue(null);
+    const enabled = await createAuthenik8({
+      ...baseConfig,
+      agent: { resolveAgent },
+    });
+
+    expect(enabled.agent).toBe(mockAgentService);
+    expect(AgentIdentityService).toHaveBeenCalledWith(expect.objectContaining({
+      config: { resolveAgent },
+      redisClient: mockRedisClient,
+      verifyHumanToken: expect.any(Function),
+      hasHumanSession: expect.any(Function),
+    }));
   });
 
   it('uses provided identityAdapter over the default redis adapter', async () => {
@@ -215,5 +266,26 @@ describe('issueTokens', () => {
       email: 'test@example.com',
       sessionId: expect.any(String),
     }));
+  });
+});
+
+describe('session revocation', () => {
+  it('revokes both access and refresh state for one session', async () => {
+    const instance = await createAuthenik8(baseConfig);
+    await instance.revokeSession('user-1', 'session-1');
+    expect(mockRefreshService.revokeSession).toHaveBeenCalledWith('user-1', 'session-1');
+  });
+
+  it('revokes indexed and currently active refresh families', async () => {
+    mockJwtService.listSessions.mockResolvedValueOnce([
+      { sessionId: 'session-1' },
+      { sessionId: 'session-2' },
+    ]);
+    const instance = await createAuthenik8(baseConfig);
+    await instance.revokeAllSessions('user-1');
+    expect(mockRefreshService.revokeAllSessions).toHaveBeenCalledWith(
+      'user-1',
+      ['session-1', 'session-2'],
+    );
   });
 });

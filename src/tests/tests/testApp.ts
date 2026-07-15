@@ -26,7 +26,7 @@ export const createTestApp = async () => {
     res.json(tokens);
   });
 
-  app.get("/protected", (req, res) => {
+  app.get("/protected", async (req, res) => {
     const token = req.headers.authorization?.split(" ")[1];
 
     if (!token) {
@@ -34,7 +34,8 @@ export const createTestApp = async () => {
     }
 
     try {
-      const decoded = auth.verifyToken(token);
+      const decoded = await auth.verifyToken(token);
+      if (!decoded) return res.status(401).json({ error: "Unauthorized" });
       return res.json({ data: "secure data", user: decoded });
     } catch {
       return res.status(401).json({ error: "Unauthorized" });

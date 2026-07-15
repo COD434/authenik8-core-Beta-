@@ -10,14 +10,9 @@ const rate_limiter_flexible_1 = require("rate-limiter-flexible");
 const ip_address_1 = require("ip-address");
 const WHITELIST_KEY = "whitelist:ips";
 const IP_EXPIRATION_SECONDS = 7 * 24 * 60 * 60;
-const DEFAULT_JWT_EXPIRY = "1h";
 const whitelistEntryKey = (entry) => `${WHITELIST_KEY}:entry:${encodeURIComponent(entry)}`;
-const JWT_SECRET = process.env.JWT_SECRET || "Boo";
-const EXPIRY = "1h";
 class SecurityModule {
     constructor(options = {}) {
-        this.jwtSecret = options.jwtSecret || process.env.JWT_SECRET || "Boo";
-        this.jwtExpiry = options.jwtExpiry || DEFAULT_JWT_EXPIRY;
         this.whiteListEnabled = options.whiteListEnabled ?? true;
         this.helmetEnabled = options.helmetEnabled ?? true;
         this.rateLimiterEnabled = options.rateLimiterEnabled ?? true;

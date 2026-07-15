@@ -18,6 +18,7 @@ const mockTokenService = {
 const mockUser = {
   id: 'user-123',
   email: 'test@example.com',
+  role: 'ADMIN',
   providers: [{ provider: 'google', providerId: 'google-456' }],
 };
 
@@ -68,6 +69,7 @@ describe('createIdentityEngine', () => {
       expect(mockTokenService.signAccessToken).toHaveBeenCalledWith(expect.objectContaining({
         userId: mockUser.id,
         email: mockUser.email,
+        role: 'admin',
         sessionId: expect.any(String),
       }));
     });

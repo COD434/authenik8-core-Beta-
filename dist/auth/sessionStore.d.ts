@@ -17,13 +17,15 @@ export type SessionRedisClient = {
 };
 export declare class SessionStore {
     private readonly redis?;
-    constructor(redis?: SessionRedisClient | undefined);
-    list(userId: string): Promise<SessionMetadata[]>;
-    get(userId: string, sessionId: string): Promise<StoredSession | null>;
-    upsert(userId: string, token: string, metadata: SessionMetadata, ttlSeconds: number): Promise<void>;
-    updateToken(userId: string, sessionId: string, token: string, ttlSeconds: number, defaults?: Partial<Omit<SessionMetadata, "sessionId">>): Promise<void>;
-    tokenMatches(userId: string, sessionId: string, token: string): Promise<boolean>;
-    revoke(userId: string, sessionId: string): Promise<void>;
-    revokeAll(userId: string): Promise<void>;
+    private readonly namespace;
+    constructor(redis?: SessionRedisClient | undefined, namespace?: string);
+    private sessionKey;
+    list(principalId: string): Promise<SessionMetadata[]>;
+    get(principalId: string, sessionId: string): Promise<StoredSession | null>;
+    upsert(principalId: string, token: string, metadata: SessionMetadata, ttlSeconds: number): Promise<void>;
+    updateToken(principalId: string, sessionId: string, token: string, ttlSeconds: number, defaults?: Partial<Omit<SessionMetadata, "sessionId">>): Promise<void>;
+    tokenMatches(principalId: string, sessionId: string, token: string): Promise<boolean>;
+    revoke(principalId: string, sessionId: string): Promise<void>;
+    revokeAll(principalId: string): Promise<void>;
 }
 //# sourceMappingURL=sessionStore.d.ts.map

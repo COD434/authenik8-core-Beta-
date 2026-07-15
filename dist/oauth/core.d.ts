@@ -1,5 +1,5 @@
 import { GoogleOAuthConfig, GitHubOAuthConfig, IdentityEngine } from "./types";
-import type { OAuthStateStore } from "./identity/types";
+import type { OAuthStateStore } from "./types";
 type OAuthRedisStateClient = {
     setex(key: string, seconds: number, value: string): Promise<unknown>;
     get(key: string): Promise<string | null>;

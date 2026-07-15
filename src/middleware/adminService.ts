@@ -1,88 +1,54 @@
-import { Request, Response, NextFunction } from "express";
-import jwt from "jsonwebtoken";
-import { RequireAdminOptions } from "../types/admin";
+import type { NextFunction, Request, RequestHandler, Response } from "express";
+import { JWTService } from "../auth/jwtAuth";
 import { SessionStore } from "../auth/sessionStore";
 
-interface JwtPayload {
-  userId?: string;
-  role?: string;
-  sessionId?: string;
+const ADMIN_ONLY_ERROR = { error: "Forbidden: Admin only" };
+
+export interface RequireAdminOptions {
+  requireAuth?: RequestHandler;
+  /** @deprecated Pass the instance's session-aware `requireAuth` middleware. */
+  jwtSecret?: string;
+  store?: any;
+  allowCookieAuth?: boolean;
+  listSessions?: (userId: string) => Promise<unknown[]>;
+  revokeSession?: (userId: string, sessionId: string) => Promise<void>;
+  revokeAllSessions?: (userId: string) => Promise<void>;
 }
 
-const ADMIN_ONLY_ERROR = { error: "Forbidden: Admin only" };
-const INVALID_ADMIN_SESSION_ERROR = {
-  error: "Forbidden: invalid admin session",
-};
-
-export const requireAdmin = (options: RequireAdminOptions) => {
+export const requireAdmin = (options: RequireAdminOptions): RequestHandler => {
   const sessionStore = new SessionStore(options.store);
+  const requireAuth =
+    options.requireAuth ??
+    new JWTService({
+      jwtSecret: options.jwtSecret,
+      redisClient: options.store,
+      allowCookieAuth: options.allowCookieAuth,
+    }).authenticateJWT;
 
   return async (req: Request, res: Response, next: NextFunction) => {
-    const token = tokenFromRequest(req, options.allowCookieAuth ?? false);
-
-    if (!token) {
-      return res.status(401).json({ error: "Unauthorized:No token provided" });
-    }
-
-    try {
-      const decoded = jwt.verify(token, options.jwtSecret) as JwtPayload;
-
-      if (decoded.role !== "admin") {
+    return requireAuth(req, res, () => {
+      const user = (req as Request & { user?: { role?: string } }).user;
+      if (user?.role !== "admin") {
         return res.status(403).json(ADMIN_ONLY_ERROR);
       }
 
-      if (options.store) {
-        const sessionIsValid = await adminSessionIsValid(
-          sessionStore,
-          decoded,
-          token
-        );
-
-        if (!sessionIsValid) {
-          return res.status(403).json(INVALID_ADMIN_SESSION_ERROR);
-        }
-
-        attachAdminActions(req, sessionStore);
-      }
-
-      (req as any).user = decoded;
+      if (options.store || options.listSessions) attachAdminActions(req, sessionStore, options);
       return next();
-    } catch {
-      return res.status(401).json({ error: "Invalid or expired token" });
-    }
+    });
   };
 };
 
-const tokenFromRequest = (
+const attachAdminActions = (
   req: Request,
-  allowCookieAuth: boolean
-): string | undefined => {
-  const authHeader = req.headers.authorization;
-  const bearerToken = authHeader?.startsWith("Bearer ")
-    ? authHeader.split(" ")[1]
-    : undefined;
-  const cookieToken = allowCookieAuth ? req.cookies?.token : undefined;
-
-  return bearerToken || cookieToken;
-};
-
-const adminSessionIsValid = async (
   sessionStore: SessionStore,
-  decoded: JwtPayload,
-  token: string
-): Promise<boolean> => {
-  if (!decoded.userId || !decoded.sessionId) {
-    return false;
-  }
-
-  return sessionStore.tokenMatches(decoded.userId, decoded.sessionId, token);
-};
-
-const attachAdminActions = (req: Request, sessionStore: SessionStore) => {
+  options: RequireAdminOptions,
+) => {
   (req as any).adminActions = {
-    listSessions: (userId: string) => sessionStore.list(userId),
+    listSessions: (userId: string) =>
+      options.listSessions?.(userId) ?? sessionStore.list(userId),
     revokeSession: (userId: string, sessionId: string) =>
-      sessionStore.revoke(userId, sessionId),
-    revokeAllSessions: (userId: string) => sessionStore.revokeAll(userId),
+      options.revokeSession?.(userId, sessionId) ?? sessionStore.revoke(userId, sessionId),
+    revokeAllSessions: (userId: string) =>
+      options.revokeAllSessions?.(userId) ?? sessionStore.revokeAll(userId),
   };
 };

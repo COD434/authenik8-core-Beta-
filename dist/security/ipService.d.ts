@@ -1,11 +1,8 @@
 import Redis from "ioredis";
-import type { StringValue } from "ms";
 import { RequestHandler } from "express";
 import { Request, Response, NextFunction } from "express";
 export interface SecurityOptions {
     redisClient?: Redis;
-    jwtSecret?: string;
-    jwtExpiry?: StringValue;
     rateLimitPoints?: number;
     rateLimitDuration?: number;
     rateLimitBlock?: number;
@@ -19,8 +16,6 @@ export interface SecurityOptions {
 }
 export declare class SecurityModule {
     private redisClient;
-    private jwtSecret;
-    private jwtExpiry;
     private rateLimiter?;
     private whiteListEnabled;
     private helmetEnabled;

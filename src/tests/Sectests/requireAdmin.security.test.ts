@@ -168,7 +168,7 @@ describe("requireAdmin", () => {
     const response = await request(createAppWithRedis())
       .get("/admin")
       .set("Authorization", `Bearer ${token}`);
-    expect(response.status).toBe(401);
+    expect(response.status).toBe(403);
   });
 
   test("rejects expired tokens", async () => {
@@ -176,7 +176,7 @@ describe("requireAdmin", () => {
     const response = await request(createAppWithRedis())
       .get("/admin")
       .set("Authorization", `Bearer ${token}`);
-    expect(response.status).toBe(401);
+    expect(response.status).toBe(403);
   });
 
   test("rejects role casing variations like Admin", async () => {

@@ -1,26 +1,34 @@
-import { JWTService } from "../../auth/jwtAuth";
-import jwt from "jsonwebtoken";
 import httpMocks from "node-mocks-http";
-import { vi } from "vitest"
+import {
+  createLocalJWKSet,
+  decodeJwt,
+  decodeProtectedHeader,
+  jwtVerify,
+} from "jose";
+import { vi } from "vitest";
+import {
+  generateSigningJwk,
+  verifyAccessTokenWithJwks,
+} from "../../auth/jwk";
+import { JWTService } from "../../auth/jwtAuth";
 
 const SECRET = "test-secret";
 const WRONG_SECRET = "wrong-secret";
+const BASE64URL = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
 
-// Mock Redis client
 const mockRedis = {
-  store: new Map <string,Record <string ,string>>(),
+  store: new Map<string, Record<string, string>>(),
   async hgetall(key: string) {
     return this.store.get(key) ?? null;
   },
-
-  async hset(key: string, field:string, value:string) {
-	  const hash =this.store.get(key) ?? {};
-	  hash[field] = value;
+  async hset(key: string, field: string, value: string) {
+    const hash = this.store.get(key) ?? {};
+    hash[field] = value;
     this.store.set(key, hash);
   },
   async hdel(key: string, field: string) {
-  const hash = this.store.get(key);
-  if (hash) delete hash[field];
+    const hash = this.store.get(key);
+    if (hash) delete hash[field];
   },
   async expire(_key: string, _ttl: number) {},
   clear() {
@@ -36,106 +44,199 @@ const makeService = (withRedis = false, allowCookieAuth = false) =>
     allowCookieAuth,
   });
 
-
-
-describe("signToken", () => {
-  it("produces a valid JWT",async () => {
+describe("JOSE token signing and verification", () => {
+  it("produces a verified access token with required claims", async () => {
     const svc = makeService();
     const token = await svc.signToken({ userId: "u1", email: "a@b.com" });
-    const decoded = jwt.verify(token, SECRET) as any;
-    expect(decoded.userId).toBe("u1");
+    const decoded = await svc.verifyToken(token);
+
+    expect(decoded).toMatchObject({
+      userId: "u1",
+      tokenUse: "access",
+      iss: "authenik8-core",
+      aud: "authenik8-api",
+    });
+    expect(decoded?.jti).toEqual(expect.any(String));
   });
 
-  it("defaults to 1h expiry when none supplied",async () => {
-    const svc = new JWTService({ jwtSecret: SECRET });
-    const token = await svc.signToken({ userId: "u1", email: "a@b.com" });
-    const decoded = jwt.decode(token) as any;
-    expect(decoded.exp - decoded.iat).toBeLessThanOrEqual(3600);
-  });
-});
-
-
-
-describe("verifyToken — JWT attacks", () => {
-  it("rejects a token signed with the wrong secret",async () => {
-    const token =  jwt.sign({ userId: "u1", email: "a@b.com" }, WRONG_SECRET);
-    expect(makeService().verifyToken(token)).toBeNull();
+  it("defaults access tokens to a one-hour expiry", async () => {
+    const token = await new JWTService({ jwtSecret: SECRET }).signToken({
+      userId: "u1",
+      email: "a@b.com",
+    });
+    const decoded = decodeJwt(token);
+    expect(decoded.exp! - decoded.iat!).toBeLessThanOrEqual(3600);
   });
 
-  it("rejects an expired token", () => {
-    const token  = jwt.sign(
-      { userId: "u1", email: "a@b.com" },
-      SECRET,
-      { expiresIn: -1 } // already expired
+  it("rejects a token signed with the wrong key", async () => {
+    const token = await new JWTService({ jwtSecret: WRONG_SECRET }).signToken({
+      userId: "u1",
+      email: "a@b.com",
+    });
+    await expect(makeService().verifyToken(token)).resolves.toBeNull();
+  });
+
+  it("rejects an expired token", async () => {
+    const token = await new JWTService({
+      jwtSecret: SECRET,
+      expiry: "-1s",
+    }).signToken({ userId: "u1", email: "a@b.com" });
+    await expect(makeService().verifyToken(token)).resolves.toBeNull();
+  });
+
+  it("rejects alg:none, tampered, and malformed tokens", async () => {
+    const header = Buffer.from(JSON.stringify({ alg: "none", typ: "JWT" })).toString(
+      "base64url",
     );
-    expect(makeService().verifyToken(token)).toBeNull();
-  });
-
-  it("rejects a token with algorithm set to none (none-attack)", () => {
-    // Craft a token with alg:none manually
-    const header = Buffer.from(JSON.stringify({ alg: "none", typ: "JWT" }))
-      .toString("base64url");
     const payload = Buffer.from(
-      JSON.stringify({ userId: "u1", email: "a@b.com" })
+      JSON.stringify({ userId: "u1", email: "a@b.com" }),
     ).toString("base64url");
-    const noneToken = `${header}.${payload}.`;
-    expect(makeService().verifyToken(noneToken)).toBeNull();
+    await expect(makeService().verifyToken(`${header}.${payload}.`)).resolves.toBeNull();
+
+    const token = await makeService().signToken({ userId: "u1", email: "a@b.com" });
+    const [protectedHeader, , signature] = token.split(".");
+    const tampered = Buffer.from(JSON.stringify({ userId: "admin" })).toString(
+      "base64url",
+    );
+    await expect(
+      makeService().verifyToken(`${protectedHeader}.${tampered}.${signature}`),
+    ).resolves.toBeNull();
+    await expect(makeService().verifyToken("not.a.token")).resolves.toBeNull();
   });
 
-  it("rejects a tampered payload",async () => {
-    const token = await  makeService().signToken({ userId: "u1", email: "a@b.com" });
-    const [h, , sig] = token.split(".");
-    const tampered = Buffer.from(
-      JSON.stringify({ userId: "admin", email: "evil@b.com" })
-    ).toString("base64url");
-    const tamperedToken = `${h}.${tampered}.${sig}`;
-    expect(makeService().verifyToken(tamperedToken)).toBeNull();
-  });
-
-  it("returns null for a completely invalid string", () => {
-    expect(makeService().verifyToken("not.a.token")).toBeNull();
+  it("does not accept a guest token as an access token", async () => {
+    const svc = makeService();
+    const token = await svc.guestToken();
+    await expect(svc.verifyToken(token)).resolves.toBeNull();
+    await expect(svc.verifyGuestToken(token)).resolves.toMatchObject({ type: "guest" });
   });
 });
 
-// ─── guestToken ───────────────────────────────────────────────────────────────
+describe("ES256 JWK and rotation", () => {
+  it("fails fast on incomplete JWK configuration", async () => {
+    const signingKey = await generateSigningJwk("validation-key");
+
+    expect(() => new JWTService({
+      jwk: {
+        keys: [signingKey],
+        activeKid: "validation-key",
+        issuer: "https://issuer.example",
+        audience: "",
+      },
+    })).toThrow("jwt.audience");
+
+    expect(() => new JWTService({
+      jwk: {
+        keys: [{ ...signingKey, x: undefined }],
+        activeKid: "validation-key",
+        issuer: "https://issuer.example",
+        audience: "example-api",
+      },
+    })).toThrow("x and y coordinates");
+  });
+
+  it("publishes public keys and verifies with kid, issuer, and audience", async () => {
+    const signingKey = await generateSigningJwk("current-key");
+    const svc = new JWTService({
+      jwk: {
+        keys: [signingKey],
+        activeKid: "current-key",
+        issuer: "https://issuer.example",
+        audience: "example-api",
+      },
+    });
+    const token = await svc.signToken({ userId: "u1", email: "a@b.com" });
+    const header = decodeProtectedHeader(token);
+    const jwks = svc.getJwks();
+
+    expect(header).toMatchObject({ alg: "ES256", kid: "current-key", typ: "JWT" });
+    expect(jwks.keys[0]).not.toHaveProperty("d");
+    await expect(
+      jwtVerify(token, createLocalJWKSet(jwks), {
+        algorithms: ["ES256"],
+        issuer: "https://issuer.example",
+        audience: "example-api",
+      }),
+    ).resolves.toMatchObject({ payload: { userId: "u1" } });
+    await expect(
+      jwtVerify(token, createLocalJWKSet(jwks), {
+        issuer: "https://wrong.example",
+        audience: "example-api",
+      }),
+    ).rejects.toThrow();
+    await expect(
+      verifyAccessTokenWithJwks(token, jwks, {
+        issuer: "https://issuer.example",
+        audience: "example-api",
+      }),
+    ).resolves.toMatchObject({ userId: "u1", tokenUse: "access" });
+  });
+
+  it("rejects non-canonical compact token encodings", async () => {
+    const signingKey = await generateSigningJwk("canonical-key");
+    const config = {
+      keys: [signingKey],
+      activeKid: "canonical-key",
+      issuer: "https://issuer.example",
+      audience: "example-api",
+    };
+    const svc = new JWTService({ jwk: config });
+    const token = await svc.signToken({ userId: "u1" });
+    const segments = token.split(".");
+    const signature = segments[2]!;
+    const finalIndex = BASE64URL.indexOf(signature[signature.length - 1]!);
+    segments[2] = `${signature.slice(0, -1)}${BASE64URL[finalIndex ^ 1]}`;
+    const nonCanonicalToken = segments.join(".");
+
+    expect(Buffer.from(segments[2]!, "base64url")).toEqual(
+      Buffer.from(signature, "base64url"),
+    );
+    await expect(svc.verifyToken(nonCanonicalToken)).resolves.toBeNull();
+    await expect(
+      verifyAccessTokenWithJwks(nonCanonicalToken, svc.getJwks(), config),
+    ).rejects.toThrow("non-canonical");
+  });
+
+  it("keeps old tokens verifiable while a new kid signs new tokens", async () => {
+    const oldKey = await generateSigningJwk("old-key");
+    const newKey = await generateSigningJwk("new-key");
+    const base = { issuer: "issuer", audience: "api" };
+    const oldService = new JWTService({
+      jwk: { ...base, keys: [oldKey], activeKid: "old-key" },
+    });
+    const oldToken = await oldService.signToken({ userId: "u1" });
+    const rotatedService = new JWTService({
+      jwk: { ...base, keys: [newKey, oldKey], activeKid: "new-key" },
+    });
+    const newToken = await rotatedService.signToken({ userId: "u1" });
+
+    await expect(rotatedService.verifyToken(oldToken)).resolves.toMatchObject({ userId: "u1" });
+    expect(decodeProtectedHeader(newToken).kid).toBe("new-key");
+  });
+});
 
 describe("guestToken", () => {
-  it("produces a token with type guest", () => {
-    const token =  makeService().guestToken();
-    const decoded = jwt.verify(token, SECRET) as any;
-    expect(decoded.type).toBe("guest");
-  });
-
-  it("each guest token has a unique id", () => {
-    const svc = makeService();
-    const t1 = jwt.decode(svc.guestToken()) as any;
-    const t2 = jwt.decode(svc.guestToken()) as any;
-    expect(t1.id).not.toBe(t2.id);
-  });
-
-  it("fires onGuestToken callback", () => {
+  it("issues unique guest identities and invokes the callback", async () => {
     const cb = vi.fn();
-    const svc = new JWTService({ jwtSecret: SECRET,expiry: "1h", onGuestToken: cb });
-    svc.guestToken();
-    expect(cb).toHaveBeenCalledTimes(1);
+    const svc = new JWTService({ jwtSecret: SECRET, expiry: "1h", onGuestToken: cb });
+    const first = decodeJwt(await svc.guestToken());
+    const second = decodeJwt(await svc.guestToken());
+    expect(first.type).toBe("guest");
+    expect(first.id).not.toBe(second.id);
+    expect(cb).toHaveBeenCalledTimes(2);
   });
 });
 
-// ─── authenticateJWT middleware ───────────────────────────────────────────────
-
-describe("authenticateJWT — middleware", () => {
+describe("authenticateJWT middleware", () => {
   beforeEach(() => mockRedis.clear());
 
   const run = async (
     svc: JWTService,
     token: string | null,
-    via: "bearer" | "cookie" = "bearer"
+    via: "bearer" | "cookie" = "bearer",
   ) => {
     const req = httpMocks.createRequest({
-      headers:
-        via === "bearer" && token
-          ? { authorization: `Bearer ${token}` }
-          : {},
+      headers: via === "bearer" && token ? { authorization: `Bearer ${token}` } : {},
       cookies: via === "cookie" && token ? { token } : {},
     });
     const res = httpMocks.createResponse();
@@ -144,76 +245,44 @@ describe("authenticateJWT — middleware", () => {
     return { req, res, next };
   };
 
-  it("calls next() for a valid Bearer token", async () => {
+  it("accepts Bearer tokens and only accepts cookies when enabled", async () => {
     const svc = makeService();
     const token = await svc.signToken({ userId: "u1", email: "a@b.com" });
-    const { next } = await run(svc, token);
-    expect(next).toHaveBeenCalled();
+    expect((await run(svc, token)).next).toHaveBeenCalled();
+    expect((await run(svc, token, "cookie")).res.statusCode).toBe(401);
+    expect((await run(makeService(false, true), token, "cookie")).next).toHaveBeenCalled();
   });
 
-  it("rejects a valid cookie token by default", async () => {
-    const svc = makeService();
-    const token = await svc.signToken({ userId: "u1", email: "a@b.com" });
-    const { res, next } = await run(svc, token, "cookie");
-    expect(res.statusCode).toBe(401);
-    expect(next).not.toHaveBeenCalled();
+  it("returns 401 without a token and 403 for invalid tokens", async () => {
+    expect((await run(makeService(), null)).res.statusCode).toBe(401);
+    expect((await run(makeService(), "not.a.token")).res.statusCode).toBe(403);
   });
 
-  it("calls next() for a valid cookie token only when cookie auth is enabled", async () => {
-    const svc = makeService(false, true);
-    const token = await svc.signToken({ userId: "u1", email: "a@b.com" });
-    const { next } = await run(svc, token, "cookie");
-    expect(next).toHaveBeenCalled();
-  });
-
-  it("returns 401 when no token is present", async () => {
-    const { res, next } = await run(makeService(), null);
-    expect(res.statusCode).toBe(401);
-    expect(next).not.toHaveBeenCalled();
-  });
-
-  it("returns 403 for an expired token", async () => {
-    const token = jwt.sign({ userId: "u1", email: "a@b.com" }, SECRET, {
-      expiresIn: -1,
-    });
-    const { res, next } = await run(makeService(), token);
-    expect(res.statusCode).toBe(403);
-    expect(next).not.toHaveBeenCalled();
-  });
-
-  it("returns 403 for a token signed with wrong secret", async () => {
-    const token = jwt.sign({ userId: "u1", email: "a@b.com" }, WRONG_SECRET);
-    const { res, next } = await run(makeService(), token);
-    expect(res.statusCode).toBe(403);
-    expect(next).not.toHaveBeenCalled();
-  });
-
-  // Redis session validation
-  it("returns 403 when token does not match stored session (stolen token)", async () => {
+  it("rejects a valid signature when the stored session does not match", async () => {
     const svc = makeService(true);
     const realToken = await svc.signToken({ userId: "u1", email: "a@b.com" });
-    await new Promise((r) => setTimeout(r, 20))
-    const stolenToken = jwt.sign({ userId: "u1", email: "a@b.com" }, SECRET, {
-      expiresIn: "1h",
+    const payload = decodeJwt(realToken);
+    const stolenToken = await makeService().signToken({
+      userId: "u1",
+      email: "a@b.com",
+      sessionId: payload.sessionId as string,
     });
-    
+
     const { res, next } = await run(svc, stolenToken);
     expect(res.statusCode).toBe(403);
     expect(next).not.toHaveBeenCalled();
   });
 
-  it("calls next() when token matches stored session exactly", async () => {
+  it("accepts the stored token, attaches its user, then rejects it after revocation", async () => {
     const svc = makeService(true);
     const token = await svc.signToken({ userId: "u1", email: "a@b.com" });
+    const accepted = await run(svc, token);
+    expect(accepted.next).toHaveBeenCalled();
+    expect((accepted.req as any).user.userId).toBe("u1");
 
-   const {next} =await run( svc, token);          
-   expect(next).toHaveBeenCalled();      
-  });
-
-  it("attaches decoded user to req after successful auth", async () => {
-    const svc = makeService();
-    const token = await svc.signToken({ userId: "u1", email: "a@b.com" });
-    const { req } = await run(svc, token);
-    expect((req as any).user.userId).toBe("u1");
+    await svc.revokeSession("u1", decodeJwt(token).sessionId as string);
+    const revoked = await run(svc, token);
+    expect(revoked.res.statusCode).toBe(403);
+    expect(revoked.next).not.toHaveBeenCalled();
   });
 });

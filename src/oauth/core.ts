@@ -1,6 +1,6 @@
 import { createGoogleProvider } from "./providers/google";
 import { GoogleOAuthConfig, GitHubOAuthConfig, IdentityEngine } from "./types";
-import type { OAuthState, OAuthStateStore } from "./identity/types";
+import type { OAuthState, OAuthStateStore } from "./types";
 import { createGitHubProvider } from "./providers/github";
 
 type OAuthRedisStateClient = {
@@ -8,6 +8,8 @@ type OAuthRedisStateClient = {
   get(key: string): Promise<string | null>;
   del(key: string): Promise<unknown>;
 };
+
+
 
 const stateKey = (state: string) => `oauth:state:${state}`;
 

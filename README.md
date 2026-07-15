@@ -21,35 +21,138 @@ Authenik8-core adds a security layer on top of JWT:
 
  •Unified authentication + security logic
 
+ •Scoped identities for AI agents, workers, bots, and M2M callers
+
 ## Example: Replay Attack Prevention
 ```
 TypeScript
 // First request → valid
-await auth.refresh(token);
+await auth.refreshToken(token);
 
 // Reusing same token → blocked
-await auth.refresh(token); // rejected
+await auth.refreshToken(token); // rejected
 ```
 ***
 
 ## Getting started
-```
-import { createAuthenik8 } from "authenik8";
+
+Generate and persist an ES256 private JWK once. Do not generate a new key every time the process starts.
+
+```ts
+import {
+  createAuthenik8,
+  generateSigningJwk,
+  verifyAccessTokenWithJwks,
+} from "authenik8-core";
+
+const privateJwk = await generateSigningJwk("2026-07-primary");
+// Store privateJwk in your secret manager before constructing the engine.
 
 const auth = await createAuthenik8({
-  jwtSecret: "ACCESS_SECRET",
-  refreshSecret: "REFRESH_SECRET"
+  jwt: {
+    keys: [privateJwk],
+    activeKid: "2026-07-primary",
+    issuer: "https://api.example.com",
+    audience: "example-api",
+  },
+  refreshSecret: process.env.REFRESH_SECRET!,
 });
 
-// generate tokens
-const refreshToken = await auth.generateRefreshToken({
+app.get("/.well-known/jwks.json", (_req, res) => res.json(auth.getJwks()));
+app.get("/protected", auth.requireAuth, (_req, res) => res.sendStatus(204));
+
+const tokens = await auth.issueTokens({
   userId: "user_1",
-  email: "test@test.com"
+  email: "test@example.com",
+});
+const payload = await auth.verifyToken(tokens.accessToken);
+
+// A separate service can verify with public keys only (or pass a JWKS URL).
+const publicPayload = await verifyAccessTokenWithJwks(
+  tokens.accessToken,
+  auth.getJwks(),
+  { issuer: "https://api.example.com", audience: "example-api" },
+);
+```
+
+`jwtSecret` remains available as a deprecated JOSE/HS256 migration path. It does not provide a public JWKS and should not be used for new applications.
+
+## Key rotation
+
+1. Generate and securely persist a new key with a unique `kid`.
+2. Put the new private JWK and previous verification keys in `jwt.keys`.
+3. Set `activeKid` to the new key. New tokens now carry the new `kid`.
+4. Keep old public keys until every token they signed has expired, then remove them.
+
+`auth.getJwks()` strips private key material and returns every configured public verification key. Verification enforces ES256, `kid`, issuer, audience, expiry, and token purpose.
+
+## Agent and service identity
+
+Agent identity is optional and fails closed. The application supplies the source
+of truth for registered agents and their maximum scopes:
+
+```ts
+const auth = await createAuthenik8({
+  jwt,
+  refreshSecret,
+  redis,
+  agent: {
+    resolveAgent: async (agentId) => agentRepository.findActive(agentId),
+    authorizeDelegation: async ({ user, agent, requestedScopes }) =>
+      user.role === "admin" &&
+      agent.agentId === "build-worker" &&
+      requestedScopes.every((scope) => scope === "tasks:read"),
+  },
+});
+```
+
+Mint M2M tokens only after a trusted workload-authentication exchange such as
+mTLS, cloud workload identity, or a signed client assertion:
+
+```ts
+const machine = await auth.agent!.issueToken({
+  agentId: "build-worker",
+  scopes: ["tasks:read"],
+  label: "production queue worker",
 });
 
-// refresh tokens
-const result = await auth.refresh(refreshToken);
+app.post(
+  "/internal/tasks",
+  auth.agent!.requireScopes("tasks:write"),
+  handler,
+);
 ```
+
+`issueToken()` is a privileged SDK primitive and must not be exposed as an
+unauthenticated HTTP endpoint. Agent tokens use a distinct `tokenUse`, carry an
+exact scope set and `actorChain`, and are stored under
+`agent-sessions:<agentId>`. Human middleware rejects agent tokens.
+
+Delegated tokens require an active human access-token session and an explicit
+`authorizeDelegation` decision:
+
+```ts
+const delegated = await auth.agent!.issueDelegatedToken({
+  agentId: "build-worker",
+  userAccessToken,
+  scopes: ["tasks:read"],
+});
+```
+
+They identify the human subject and agent actor through `sub`, `act`, and
+`actorChain` claims. Revoking the originating human session invalidates the
+delegation. Removing an agent or scope from `resolveAgent` invalidates existing
+tokens during verification.
+
+```ts
+await auth.agent!.revokeSession(agentId, sessionId);
+await auth.agent!.revokeAgent(agentId);
+await auth.agent!.activateAgent(agentId);
+```
+
+Public JWKS verification establishes signature validity but cannot observe
+Redis session revocation. Security-sensitive agent routes should use the
+session-aware SDK middleware or a trusted introspection boundary.
 ***
 
 ## Why Authenik8-core?
@@ -74,10 +177,10 @@ Authenik8 solves this with:
 ## Secure Refresh Flow
 ```
  // first use → valid
-await auth.refresh(token);
+await auth.refreshToken(token);
 
 // reuse same token → rejected
-await auth.refresh(token); // ❌ throws
+await auth.refreshToken(token); // ❌ throws
 ```
 ***
 
@@ -86,12 +189,25 @@ await auth.refresh(token); // ❌ throws
 const auth = await createAuthenik8(config);
 
 // auth
-auth.signToken(payload);
-auth.verifyToken(token);
+await auth.signToken(payload);
+await auth.verifyToken(token);
+auth.getJwks();
 
 // refresh
-auth.refresh(refreshToken);
+auth.refreshToken(refreshToken);
 auth.generateRefreshToken(payload);
+
+// Redis-backed sessions
+await auth.listSessions(userId);
+await auth.revokeSession(userId, sessionId);
+await auth.revokeAllSessions(userId);
+
+// optional agent identity
+await auth.agent?.issueToken({ agentId, scopes });
+await auth.agent?.issueDelegatedToken({ agentId, userAccessToken, scopes });
+auth.agent?.requireAgent;
+auth.agent?.requireScopes("tasks:write");
+await auth.agent?.revokeAgent(agentId);
 
 // security
 auth.rateLimit;
@@ -99,6 +215,7 @@ auth.ipWhitelist;
 auth.helmet;
 
 // middleware
+auth.requireAuth;
 auth.requireAdmin;
 ```
 ***

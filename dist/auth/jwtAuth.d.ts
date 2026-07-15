@@ -1,7 +1,8 @@
-import { Request, Response, NextFunction } from "express";
-import { SignOptions } from "jsonwebtoken";
+import type { NextFunction, Request, Response } from "express";
+import type { Authenik8JwkConfig } from "./jwk";
 import { SessionMetadata } from "./sessionStore";
-interface JwtPayload {
+export interface JwtPayload {
+    [key: string]: unknown;
     userId?: string;
     email?: string;
     role?: string;
@@ -9,10 +10,19 @@ interface JwtPayload {
     type?: string;
     id?: string;
     createdAt?: number;
+    tokenUse?: string;
+    exp?: number;
+    iat?: number;
+    iss?: string;
+    aud?: string | string[];
+    jti?: string;
 }
 export interface JWTOptions {
-    jwtSecret: string;
-    expiry?: SignOptions["expiresIn"];
+    jwtSecret?: string;
+    jwk?: Authenik8JwkConfig;
+    issuer?: string;
+    audience?: string | string[];
+    expiry?: string | number;
     redisClient?: any;
     onGuestToken?: () => void;
     allowCookieAuth?: boolean;
@@ -22,13 +32,16 @@ type SignablePayload = Record<string, unknown> & {
     sessionId?: string;
 };
 export declare class JWTService {
-    private readonly jwtSecret;
-    private readonly expiry?;
+    private readonly expiry;
     private readonly redisClient?;
     private readonly onGuestToken?;
     private readonly allowCookieAuth;
     private readonly sessionStore;
+    private readonly keyRing;
     constructor(options: JWTOptions);
+    get issuer(): string;
+    get audience(): string | string[];
+    getJwks(): import("jose", { with: { "resolution-mode": "import" } }).JSONWebKeySet;
     listSessions(userId: string): Promise<SessionMetadata[]>;
     revokeAllSessions(userId: string): Promise<void>;
     revokeSession(userId: string, sessionId: string): Promise<void>;
@@ -36,13 +49,15 @@ export declare class JWTService {
         device?: string;
         ip?: string;
     }): Promise<string>;
-    guestToken(): string;
-    verifyToken(token: string): JwtPayload | null;
+    guestToken(): Promise<string>;
+    verifyToken(token: string): Promise<JwtPayload | null>;
+    verifyActiveToken(token: string): Promise<JwtPayload | null>;
+    hasActiveSession(userId: string, sessionId: string): Promise<boolean>;
+    verifyGuestToken(token: string): Promise<JwtPayload | null>;
     authenticateJWT: (req: Request, res: Response, next: NextFunction) => Promise<void | Response<any, Record<string, any>>>;
     private tokenFromRequest;
     private sessionIsValid;
     private persistSessionToken;
-    private tokenTtlSeconds;
 }
 export {};
 //# sourceMappingURL=jwtAuth.d.ts.map

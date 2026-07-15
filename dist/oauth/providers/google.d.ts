@@ -1,5 +1,5 @@
 import { Request, Response } from "express";
-import type { OAuthStateStore } from "../identity/types";
+import type { OAuthStateStore } from "../types";
 import { OAuthCallbackResult, GoogleOAuthConfig, IdentityEngine } from "../types";
 export declare function createGoogleProvider(config: GoogleOAuthConfig, stateStore: OAuthStateStore, identityEngine?: IdentityEngine): {
     redirect: (req: Request, res: Response) => Promise<void>;
