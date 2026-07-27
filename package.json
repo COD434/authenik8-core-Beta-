@@ -68,6 +68,7 @@
     "@types/node": "^25.5.0",
     "@types/supertest": "^7.2.0",
     "@vitest/coverage-v8": "^4.1.8",
+    "dotenv": "^17.4.2",
     "eslint": "^10.8.0",
     "globals": "^16.4.0",
     "ioredis-mock": "^8.13.1",
