@@ -1,7 +1,5 @@
-import dotenv from "dotenv";
 import { RedisStore } from "connect-redis";
 import Redis, { Redis as RedisCon, RedisOptions } from "ioredis";
-dotenv.config();
 
 interface RedisConfig {
   url?: string;
@@ -48,6 +46,31 @@ const validateRedisConfig = (config: RedisConfig) => {
     !config.url.startsWith("rediss://")
   ) {
     throw new Error("Redis URL must use 'redis://' or 'rediss://' protocol");
+  }
+  if (
+    config.port !== undefined &&
+    (!Number.isSafeInteger(config.port) ||
+      config.port < 1 ||
+      config.port > 65_535)
+  ) {
+    throw new Error("Redis port must be an integer between 1 and 65535");
+  }
+  if (
+    !Number.isSafeInteger(config.connectTimeout) ||
+    config.connectTimeout < 100 ||
+    config.connectTimeout > 120_000
+  ) {
+    throw new Error(
+      "Redis connectTimeout must be between 100 and 120000 milliseconds",
+    );
+  }
+  if (
+    config.maxRetriesPerRequest !== undefined &&
+    (!Number.isSafeInteger(config.maxRetriesPerRequest) ||
+      config.maxRetriesPerRequest < 0 ||
+      config.maxRetriesPerRequest > 100)
+  ) {
+    throw new Error("Redis maxRetriesPerRequest must be between 0 and 100");
   }
 };
 

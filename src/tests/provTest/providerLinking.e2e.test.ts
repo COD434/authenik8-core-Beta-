@@ -41,23 +41,30 @@ class TestRedis {
   async del(key: string) {
     return this.values.delete(key) ? 1 : 0;
   }
+
+  async getdel(key: string) {
+    const value = this.values.get(key) ?? null;
+    this.values.delete(key);
+    return value;
+  }
 }
 
 const tokenService = {
-  signAccessToken: ({ userId }: { userId: string }) => `access:${userId}`,
-  generateRefreshToken: async ({ userId }: { userId: string }) =>
-    `refresh:${userId}`,
+  issueTokens: async ({ userId }: { userId: string }) => ({
+    accessToken: `access:${userId}`,
+    refreshToken: `refresh:${userId}`,
+  }),
 };
 
 const googleConfig = {
   clientId: "google-client",
-  clientSecret: "google-secret",
+  clientSecret: "google-secret-32-bytes-minimum",
   redirectUri: "https://app.example.com/oauth/google/callback",
 };
 
 const githubConfig = {
   clientId: "github-client",
-  clientSecret: "github-secret",
+  clientSecret: "github-secret-32-bytes-minimum",
   redirectUri: "https://app.example.com/oauth/github/callback",
 };
 
@@ -120,40 +127,36 @@ describe("OAuth provider linking end to end", () => {
         const url = input.toString();
 
         if (url === "https://oauth2.googleapis.com/token") {
-          return {
-            ok: true,
-            json: async () => ({
+          return new Response(
+            JSON.stringify({
               access_token: "google-access-token",
               id_token: "google-id-token",
             }),
-          };
+          );
         }
 
         if (url === "https://github.com/login/oauth/access_token") {
-          return {
-            ok: true,
-            json: async () => ({ access_token: "github-access-token" }),
-          };
+          return new Response(
+            JSON.stringify({ access_token: "github-access-token" }),
+          );
         }
 
         if (url === "https://api.github.com/user") {
-          return {
-            ok: true,
-            json: async () => ({ id: 42, name: "Shared User" }),
-          };
+          return new Response(
+            JSON.stringify({ id: 42, name: "Shared User" }),
+          );
         }
 
         if (url === "https://api.github.com/user/emails") {
-          return {
-            ok: true,
-            json: async () => [
+          return new Response(
+            JSON.stringify([
               {
                 email: "shared@example.com",
                 primary: true,
                 verified: true,
               },
-            ],
-          };
+            ]),
+          );
         }
 
         throw new Error(`Unexpected OAuth request: ${url}`);
@@ -222,7 +225,8 @@ describe("OAuth provider linking end to end", () => {
     const googleLinkResponse = response();
     await google.redirect(
       request("/oauth/google/link", { user: { userId } }),
-      googleLinkResponse
+      googleLinkResponse,
+      "link",
     );
     const googleLinkState = stateFromResponse(googleLinkResponse);
     const googleLinkCallback = await google.handleCallback(

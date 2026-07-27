@@ -121,8 +121,8 @@ vi.mock('../../agent/agentIdentity', () => ({
 
 
 const baseConfig = {
-  jwtSecret: 'test-secret',
-  refreshSecret: 'refresh-secret',
+  jwtSecret: 'test-secret-32-bytes-minimum-value',
+  refreshSecret: 'refresh-secret-32-bytes-minimum-value',
 };
 
 beforeEach(() => {
@@ -131,6 +131,34 @@ beforeEach(() => {
 
 
 describe('createAuthenik8', () => {
+  it('rejects weak, reused, and blanket-trust security configuration before Redis initialization', async () => {
+    await expect(
+      createAuthenik8({
+        jwtSecret: "short",
+        refreshSecret: baseConfig.refreshSecret,
+      }),
+    ).rejects.toThrow(/jwtSecret/);
+    await expect(
+      createAuthenik8({
+        jwtSecret: baseConfig.jwtSecret,
+        refreshSecret: baseConfig.jwtSecret,
+      }),
+    ).rejects.toThrow(/independent/);
+    await expect(
+      createAuthenik8({
+        jwtSecret: String.fromCharCode(0xd800).repeat(11),
+        refreshSecret: String.fromCharCode(0xd801).repeat(11),
+      }),
+    ).rejects.toThrow(/independent/);
+    await expect(
+      createAuthenik8({
+        ...baseConfig,
+        trustProxyHeaders: true,
+      }),
+    ).rejects.toThrow(/trustedProxyCidrs/);
+    expect(initializeRedisClient).not.toHaveBeenCalled();
+  });
+
   it('returns all expected properties', async () => {
     const instance = await createAuthenik8(baseConfig);
 
@@ -138,12 +166,15 @@ describe('createAuthenik8', () => {
       redisclient: expect.anything(),
       signToken: expect.any(Function),
       verifyToken: expect.any(Function),
+      verifyActiveToken: expect.any(Function),
       requireAuth: expect.any(Function),
       guestToken: expect.any(Function),
       getJwks: expect.any(Function),
       listSessions: expect.any(Function),
       revokeSession: expect.any(Function),
       revokeAllSessions: expect.any(Function),
+      audit: expect.anything(),
+      risk: expect.anything(),
       refreshToken: expect.any(Function),
       generateRefreshToken: expect.any(Function),
       rateLimit: expect.any(Function),
@@ -153,6 +184,10 @@ describe('createAuthenik8', () => {
       removeIP: expect.any(Function),
       listIPs: expect.any(Function),
       requireAdmin: expect.any(Function),
+      requireRole: expect.any(Function),
+      requirePermission: expect.any(Function),
+      requireScope: expect.any(Function),
+      requireTenant: expect.any(Function),
       incognito: expect.any(Function),
       issueTokens: expect.any(Function),
     });
@@ -168,6 +203,22 @@ describe('createAuthenik8', () => {
     expect(initializeRedisClient).not.toHaveBeenCalled();
   });
 
+  it('threads one explicit Redis namespace through every stateful module', async () => {
+    const { SecurityModule } = await import('../../security/ipService');
+    await createAuthenik8({
+      ...baseConfig,
+      redisKeyPrefix: "orders:production",
+    });
+
+    expect(createRedisIdentityAdapter).toHaveBeenCalledWith(
+      mockRedisClient,
+      "orders:production:oauth:v1",
+    );
+    expect(SecurityModule).toHaveBeenCalledWith(
+      expect.objectContaining({ keyPrefix: "orders:production:security" }),
+    );
+  });
+
   it('initializes redis when none is provided', async () => {
     const { initializeRedisClient } = await import('../../redis/redisService');
 
@@ -181,7 +232,7 @@ describe('createAuthenik8', () => {
 
     await createAuthenik8({
       ...baseConfig,
-      oauth: { github: { clientId: 'id', clientSecret: 'secret', redirectUri: 'uri' } } as any,
+      oauth: { github: { clientId: 'client-id', clientSecret: 'github-secret-32-bytes-minimum', redirectUri: 'https://example.test/callback' } } as any,
     });
 
     expect(vi.mocked(createOAuth)).toHaveBeenCalled();
@@ -212,6 +263,8 @@ describe('createAuthenik8', () => {
       redisClient: mockRedisClient,
       verifyHumanToken: expect.any(Function),
       hasHumanSession: expect.any(Function),
+      audit: expect.anything(),
+      risk: expect.anything(),
     }));
   });
 
@@ -266,6 +319,37 @@ describe('issueTokens', () => {
       email: 'test@example.com',
       sessionId: expect.any(String),
     }));
+  });
+
+  it('passes explicit session observations only to access-token persistence', async () => {
+    const instance = await createAuthenik8(baseConfig);
+    const observation = { ip: '203.0.113.8', device: 'test browser' };
+
+    await instance.issueTokens(
+      { userId: 'user-1', email: 'test@example.com' },
+      observation,
+    );
+
+    expect(mockJwtService.signToken).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: 'user-1' }),
+      observation,
+    );
+  });
+});
+
+describe('active token wiring', () => {
+  it('uses active-session verification for incognito authentication', async () => {
+    const { createIncognito } = await import('../../auth/guestModeService');
+    await createAuthenik8(baseConfig);
+    const options = vi.mocked(createIncognito).mock.calls[0]![0];
+    mockJwtService.verifyActiveToken.mockResolvedValueOnce({ userId: 'user-1' });
+
+    await options.verifyAccessToken!('signed-but-revoked-token');
+
+    expect(mockJwtService.verifyActiveToken).toHaveBeenCalledWith(
+      'signed-but-revoked-token',
+    );
+    expect(mockJwtService.verifyToken).not.toHaveBeenCalled();
   });
 });
 

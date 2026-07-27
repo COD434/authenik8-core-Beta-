@@ -32,9 +32,10 @@ describe("session persistence", () => {
 
   test("signToken persists the active access token session", async () => {
     const auth = await createAuthenik8({
-      jwtSecret: "session-secret",
-      refreshSecret: "refresh-secret",
+      jwtSecret: "session-secret-32-bytes-minimum-value",
+      refreshSecret: "refresh-secret-32-bytes-minimum-value",
       redis: redisHelper.redis,
+      redisKeyPrefix: redisHelper.keyPrefix,
     });
     const payload = {
       userId: redisHelper.createUserId("sessions"),
@@ -43,11 +44,19 @@ describe("session persistence", () => {
     };
 	    const token = await auth.signToken(payload);
 	    const stored = await waitForValue(() =>
-	      redisHelper.redis.hgetall(`sessions:${payload.userId}`)
+	      redisHelper.redis.hgetall(
+          `${redisHelper.keyPrefix}:sessions:${payload.userId}`,
+        )
 	    );
 	    
-  const sessions = Object.values(stored!);
-const match = sessions.some((s: any) => JSON.parse(s).token === token);
-expect(match).toBe(true);
+    const sessions = Object.values(stored!);
+    const parsed = sessions.map((session) => JSON.parse(session));
+    expect(parsed).toContainEqual(
+      expect.objectContaining({ tokenHash: expect.any(String) }),
+    );
+    expect(parsed.every((session) => session.token === undefined)).toBe(true);
+    await expect(auth.verifyActiveToken(token)).resolves.toMatchObject({
+      userId: payload.userId,
+    });
   });
 });

@@ -2,12 +2,27 @@ import crypto from "crypto";
 import { Request, Response } from "express";
 import { finalizeOAuthCallback } from "../callback";
 import type { OAuthStateStore } from "../types";
+import type { AuditEmitter } from "../../audit/types";
+import {
+  consumeOAuthState,
+  OAUTH_STATE_BYTES,
+  OAUTH_STATE_TTL_SECONDS,
+} from "../state";
+import {
+  authenticatedUserId,
+  OAUTH_HTTP_TIMEOUT_MS,
+  readBoundedJsonResponse,
+  readOAuthQueryValue,
+  validateOAuthProviderConfig,
+} from "../providerSecurity";
 import {
   GitHubOAuthConfig,
   IdentityEngine,
   OAuthCallbackResult,
   OAuthProfile,
 } from "../types";
+import { containsControlCharacter } from "../../utility/safeString";
+import { normalizeIdentityEmail } from "../identityValidation";
 
 type GitHubAccessTokenResponse = {
   access_token?: string;
@@ -27,8 +42,17 @@ type GitHubUserResponse = {
 export function createGitHubProvider(
   config: GitHubOAuthConfig,
   stateStore: OAuthStateStore,
-  identityEngine?: IdentityEngine
+  identityEngine?: IdentityEngine,
+  audit?: AuditEmitter,
 ) {
+  const providerConfig = Object.freeze({ ...config });
+  validateOAuthProviderConfig(providerConfig);
+  if (providerConfig.enterprise) {
+    throw new Error(
+      "GitHub Enterprise OAuth requires explicit trusted endpoint configuration and is not supported by this adapter",
+    );
+  }
+
   return {
     redirect: async (
       req: Request,
@@ -39,32 +63,59 @@ export function createGitHubProvider(
         return;
       }
 
-      const state = crypto.randomBytes(32).toString("hex");
-      const authUser = (req as any).user ?? null;
+      const state = crypto.randomBytes(OAUTH_STATE_BYTES).toString("hex");
+      const userId = authenticatedUserId(req);
+      if (mode === "link" && !userId) {
+        res.status(401).json({ error: "Authentication required for linking" });
+        return;
+      }
 
       await stateStore.set(
         state,
         {
-          userId: authUser?.userId ?? null,
+          userId: mode === "link" ? userId : null,
           mode,
         },
-        300
+        OAUTH_STATE_TTL_SECONDS,
       );
+      await audit?.emit({
+        type: "oauth.state_created",
+        severity: "info",
+        outcome: "success",
+        actor: userId
+          ? { type: "user", id: userId }
+          : { type: "unknown" },
+        metadata: { provider: "github", mode },
+      });
 
-      res.redirect(githubAuthorizationUrl(config, state));
+      res.redirect(githubAuthorizationUrl(providerConfig, state));
       return;
     },
 
     handleCallback: async (req: Request): Promise<OAuthCallbackResult> => {
-      const code = req.query.code as string;
-      const state = req.query.state as string;
+      const code = readOAuthQueryValue(req, "code");
+      const state = readOAuthQueryValue(req, "state");
 
       if (!state) {
+        await audit?.emit({
+          type: "oauth.state_rejected",
+          severity: "warning",
+          outcome: "denied",
+          actor: { type: "unknown" },
+          metadata: { provider: "github", reason: "missing" },
+        });
         throw new Error("OAuthError:Missing state");
       }
 
-      const stored = await stateStore.get(state);
+      const stored = await consumeOAuthState(stateStore, state);
       if (!stored) {
+        await audit?.emit({
+          type: "oauth.state_rejected",
+          severity: "warning",
+          outcome: "denied",
+          actor: { type: "unknown" },
+          metadata: { provider: "github", reason: "invalid_or_expired" },
+        });
         throw new Error("OAuthError:Invalid or expired state");
       }
 
@@ -74,10 +125,18 @@ export function createGitHubProvider(
         throw new Error("OAuthError: Missing code");
       }
 
-      const accessToken = await fetchGithubAccessToken(config, code);
+      const accessToken = await fetchGithubAccessToken(providerConfig, code);
       const profile = await verifiedGitHubProfile(accessToken);
 
-      await stateStore.del(state);
+      await audit?.emit({
+        type: "oauth.state_consumed",
+        severity: "info",
+        outcome: "success",
+        actor: userId
+          ? { type: "user", id: userId }
+          : { type: "unknown" },
+        metadata: { provider: "github", mode },
+      });
       return finalizeOAuthCallback(profile, mode, userId, identityEngine);
     },
   };
@@ -110,10 +169,21 @@ const fetchGithubAccessToken = async (
       Accept: "application/json",
     },
     body: params,
+    signal: AbortSignal.timeout(OAUTH_HTTP_TIMEOUT_MS),
   });
-  const tokenData = (await tokenRes.json()) as GitHubAccessTokenResponse;
+  if (!tokenRes.ok) {
+    throw new Error("OAuthError: GitHub token exchange failed");
+  }
+  const tokenData = (await readBoundedJsonResponse(
+    tokenRes,
+  )) as GitHubAccessTokenResponse;
 
-  if (!tokenData.access_token) {
+  if (
+    typeof tokenData.access_token !== "string" ||
+    tokenData.access_token.length === 0 ||
+    tokenData.access_token.length > 4096 ||
+    containsControlCharacter(tokenData.access_token)
+  ) {
     throw new Error("OAuthError: No access token from Github");
   }
 
@@ -126,31 +196,64 @@ const verifiedGitHubProfile = async (
   const userRes = await fetch("https://api.github.com/user", {
     headers: {
       Authorization: `Bearer ${accessToken}`,
+      Accept: "application/vnd.github+json",
     },
+    signal: AbortSignal.timeout(OAUTH_HTTP_TIMEOUT_MS),
   });
 
   if (!userRes.ok) {
     throw new Error("OAuthError: Failed to fetch GitHub user");
   }
 
-  const userData = (await userRes.json()) as GitHubUserResponse;
+  const userValue = await readBoundedJsonResponse(userRes);
+  if (
+    !userValue ||
+    typeof userValue !== "object" ||
+    !Number.isSafeInteger((userValue as Partial<GitHubUserResponse>).id) ||
+    (userValue as Partial<GitHubUserResponse>).id! <= 0
+  ) {
+    throw new Error("OAuthError: Invalid GitHub user identifier");
+  }
+  const userData = userValue as GitHubUserResponse;
   const emailRes = await fetch("https://api.github.com/user/emails", {
     headers: {
       Authorization: `Bearer ${accessToken}`,
+      Accept: "application/vnd.github+json",
     },
+    signal: AbortSignal.timeout(OAUTH_HTTP_TIMEOUT_MS),
   });
+  if (!emailRes.ok) {
+    throw new Error("OAuthError: Failed to fetch GitHub emails");
+  }
 
-  const emails = (await emailRes.json()) as GitHubEmailResponse;
-  const primaryEmail = emails.find((email) => email.primary && email.verified)
-    ?.email;
+  const emailsValue = await readBoundedJsonResponse(emailRes);
+  if (!Array.isArray(emailsValue) || emailsValue.length > 100) {
+    throw new Error("OAuthError: Invalid GitHub email response");
+  }
+  const emails = emailsValue as GitHubEmailResponse;
+  const primaryEmail = emails.find(
+    (email) =>
+      !!email &&
+      typeof email === "object" &&
+      email.primary === true &&
+      email.verified === true &&
+      typeof email.email === "string",
+  )?.email;
 
-  if (!primaryEmail) {
+  if (
+    typeof primaryEmail !== "string" ||
+    primaryEmail.length === 0 ||
+    primaryEmail.length > 254 ||
+    containsControlCharacter(primaryEmail)
+  ) {
     throw new Error("OAuthError: No verified primary email found");
   }
 
   return {
-    email: primaryEmail,
-    name: userData.name,
+    email: normalizeIdentityEmail(primaryEmail),
+    ...(typeof userData.name === "string"
+      ? { name: userData.name.slice(0, 512) }
+      : {}),
     provider: "github",
     providerId: userData.id.toString(),
     email_verified: true,

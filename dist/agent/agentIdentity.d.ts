@@ -1,6 +1,8 @@
 import type { NextFunction, Request, Response } from "express";
 import type { Authenik8JwkConfig } from "../auth/jwk";
 import type { JwtPayload } from "../auth/jwtAuth";
+import type { AuditEmitter } from "../audit/types";
+import type { SessionRiskReporter } from "../risk/types";
 import type { AgentIdentityApi, AgentIdentityConfig, AgentSessionMetadata, AgentTokenPayload, AgentTokenResult, IssueAgentTokenInput, IssueDelegatedAgentTokenInput } from "./types";
 type AgentRedisClient = {
     hget?: (key: string, field: string) => Promise<string | null>;
@@ -21,6 +23,9 @@ export interface AgentIdentityServiceOptions {
     audience: string | string[];
     verifyHumanToken: (token: string) => Promise<JwtPayload | null>;
     hasHumanSession: (userId: string, sessionId: string) => Promise<boolean>;
+    audit?: AuditEmitter;
+    risk?: SessionRiskReporter;
+    keyPrefix?: string;
 }
 export declare class AgentIdentityError extends Error {
     readonly code: "AGENT_INVALID" | "AGENT_REVOKED" | "AGENT_SCOPE_DENIED" | "AGENT_DELEGATION_DENIED" | "AGENT_SESSION_REQUIRED";
@@ -33,6 +38,10 @@ export declare class AgentIdentityService implements AgentIdentityApi {
     private readonly sessions;
     private readonly verifyHumanToken;
     private readonly hasHumanSession;
+    private readonly audit?;
+    private readonly risk?;
+    private readonly keyPrefix;
+    private readonly tokenExpirySeconds;
     constructor(options: AgentIdentityServiceOptions);
     issueToken(input: IssueAgentTokenInput): Promise<AgentTokenResult>;
     issueDelegatedToken(input: IssueDelegatedAgentTokenInput): Promise<AgentTokenResult>;
@@ -50,7 +59,10 @@ export declare class AgentIdentityService implements AgentIdentityApi {
     private authenticate;
     private isRevoked;
     private revokedKey;
-    private tokenTtl;
+    private scoped;
+    private riskPrincipal;
+    private rejectVerifiedAgent;
+    private auditAgentRejection;
 }
 export {};
 //# sourceMappingURL=agentIdentity.d.ts.map

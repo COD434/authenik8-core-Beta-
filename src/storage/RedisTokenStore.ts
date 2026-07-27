@@ -1,3 +1,6 @@
+import { validateRedisKeyPrefix } from "../redis/keyNamespace";
+import { containsControlCharacter } from "../utility/safeString";
+
 const COMPARE_AND_SET_SCRIPT = `
 if redis.call("GET", KEYS[1]) == ARGV[1] then
   if ARGV[3] ~= "" then
@@ -11,9 +14,15 @@ return 0
 `;
 
 export class RedisTokenStore {
-  private readonly prefix = "auth:v1";
+  private readonly prefix: string;
 
-  constructor(private redis?: any, _debug = false) {}
+  constructor(
+    private readonly redis: any,
+    _debug = false,
+    prefix = "auth:v1",
+  ) {
+    this.prefix = validateRedisKeyPrefix(prefix);
+  }
 
   async storeRefreshToken(
     token: string,
@@ -100,6 +109,17 @@ export class RedisTokenStore {
   }
 
   private key(...parts: string[]): string {
+    if (
+      parts.some(
+        (part) =>
+          typeof part !== "string" ||
+          part.length === 0 ||
+          part.length > 256 ||
+          containsControlCharacter(part),
+      )
+    ) {
+      throw new Error("Redis token-store key component is invalid");
+    }
     return `${this.prefix}:${parts.join(":")}`;
   }
 }

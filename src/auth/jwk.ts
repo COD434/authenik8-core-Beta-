@@ -2,6 +2,7 @@ import { randomUUID } from "crypto";
 import type { JSONWebKeySet, JWK, JWTPayload } from "jose" with {
   "resolution-mode": "import"
 };
+import { containsControlCharacter } from "../utility/safeString";
 
 type JoseModule = typeof import("jose", {
   with: { "resolution-mode": "import" }
@@ -12,6 +13,14 @@ export const ACCESS_TOKEN_ALGORITHM = "ES256" as const;
 export const LEGACY_TOKEN_ALGORITHM = "HS256" as const;
 export const DEFAULT_TOKEN_ISSUER = "authenik8-core";
 export const DEFAULT_TOKEN_AUDIENCE = "authenik8-api";
+export const MINIMUM_HMAC_SECRET_BYTES = 32;
+const MAX_COMPACT_JWT_LENGTH = 16 * 1024;
+const MAX_JWK_KEYS = 16;
+const MAX_ISSUER_LENGTH = 2048;
+const MAX_AUDIENCES = 32;
+const MAX_AUDIENCE_LENGTH = 512;
+const MAX_KID_LENGTH = 128;
+const MAX_GENERIC_TOKEN_TTL_SECONDS = 31 * 24 * 60 * 60;
 
 export type Authenik8TokenUse =
   | "access"
@@ -35,7 +44,7 @@ export interface JwtKeyRingOptions {
 }
 
 export interface SignJwtOptions {
-  expiresIn: string | number;
+  expiresInSeconds: number;
   tokenUse: Authenik8TokenUse;
 }
 
@@ -44,18 +53,12 @@ export interface PublicJwksVerificationOptions {
   audience: string | string[];
 }
 
-const PRIVATE_JWK_FIELDS = new Set([
-  "d",
-  "p",
-  "q",
-  "dp",
-  "dq",
-  "qi",
-  "oth",
-  "k",
-]);
-
 const assertCanonicalCompactJwt = (token: string): void => {
+  if (!token || token.length > MAX_COMPACT_JWT_LENGTH) {
+    throw new Error(
+      `JWT must be between 1 and ${MAX_COMPACT_JWT_LENGTH} characters`,
+    );
+  }
   const segments = token.split(".");
   if (segments.length !== 3 || segments.some((segment) => !segment)) {
     throw new Error("JWT must contain three non-empty compact segments");
@@ -69,13 +72,119 @@ const assertCanonicalCompactJwt = (token: string): void => {
   }
 };
 
-const publicJwk = (key: JWK): JWK => {
-  const result = Object.fromEntries(
-    Object.entries(key).filter(([name]) => !PRIVATE_JWK_FIELDS.has(name)),
-  ) as JWK;
+const hmacSecret = (secret: string, label: string): Uint8Array => {
+  const encoded = new TextEncoder().encode(secret);
+  if (
+    encoded.length < MINIMUM_HMAC_SECRET_BYTES ||
+    encoded.length > 4096
+  ) {
+    throw new Error(
+      `${label} must contain between ${MINIMUM_HMAC_SECRET_BYTES} and 4096 bytes of cryptographically random material`,
+    );
+  }
+  return encoded;
+};
 
+export const normalizeTokenLifetime = (
+  value: string | number,
+  label: string,
+  minimumSeconds: number,
+  maximumSeconds: number,
+): number => {
+  let seconds: number;
+  if (typeof value === "number") {
+    seconds = value;
+  } else {
+    const match = /^(\d+)([smhd])$/.exec(value);
+    if (!match) {
+      throw new Error(`${label} must use a whole-number s, m, h, or d duration`);
+    }
+    const amount = Number(match[1]);
+    const multiplier =
+      match[2] === "s"
+        ? 1
+        : match[2] === "m"
+          ? 60
+          : match[2] === "h"
+            ? 3600
+            : 86400;
+    seconds = amount * multiplier;
+  }
+  if (
+    !Number.isSafeInteger(seconds) ||
+    seconds < minimumSeconds ||
+    seconds > maximumSeconds
+  ) {
+    throw new Error(
+      `${label} must be between ${minimumSeconds} and ${maximumSeconds} seconds`,
+    );
+  }
+  return seconds;
+};
+
+const assertBoundedClaim: (
+  value: unknown,
+  label: string,
+  maximumLength: number,
+) => asserts value is string = (value, label, maximumLength) => {
+  if (
+    typeof value !== "string" ||
+    value.length === 0 ||
+    value.length > maximumLength ||
+    containsControlCharacter(value)
+  ) {
+    throw new Error(`${label} is invalid or exceeds ${maximumLength} characters`);
+  }
+};
+
+const validateIssuerAndAudience = (
+  issuer: unknown,
+  audience: unknown,
+  prefix: string,
+): void => {
+  assertBoundedClaim(issuer, `${prefix}.issuer`, MAX_ISSUER_LENGTH);
+  const audiences = Array.isArray(audience) ? audience : [audience];
+  if (
+    audiences.length === 0 ||
+    audiences.length > MAX_AUDIENCES
+  ) {
+    throw new Error(
+      `${prefix}.audience must contain between 1 and ${MAX_AUDIENCES} values`,
+    );
+  }
+  audiences.forEach((entry) =>
+    assertBoundedClaim(
+      entry,
+      `${prefix}.audience`,
+      MAX_AUDIENCE_LENGTH,
+    ),
+  );
+};
+
+const assertP256Component = (
+  value: unknown,
+  label: string,
+  kid: string,
+): void => {
+  if (typeof value !== "string") {
+    throw new Error(`JWT key ${kid} must include ${label}`);
+  }
+  const decoded = Buffer.from(value, "base64url");
+  if (
+    decoded.length !== 32 ||
+    decoded.toString("base64url") !== value
+  ) {
+    throw new Error(`JWT key ${kid} has an invalid P-256 ${label} value`);
+  }
+};
+
+const publicJwk = (key: JWK): JWK => {
   return {
-    ...result,
+    kty: key.kty,
+    crv: key.crv,
+    x: key.x,
+    y: key.y,
+    kid: key.kid,
     alg: ACCESS_TOKEN_ALGORITHM,
     use: "sig",
     key_ops: ["verify"],
@@ -83,30 +192,38 @@ const publicJwk = (key: JWK): JWK => {
 };
 
 const validateJwkConfig = (config: Authenik8JwkConfig): void => {
-  if (!config.issuer.trim()) throw new Error("jwt.issuer is required");
-  const audiences = Array.isArray(config.audience)
-    ? config.audience
-    : [config.audience];
-  if (!audiences.length || audiences.some((audience) => !audience.trim())) {
-    throw new Error("jwt.audience must contain at least one non-empty value");
+  validateIssuerAndAudience(config.issuer, config.audience, "jwt");
+  assertBoundedClaim(config.activeKid, "jwt.activeKid", MAX_KID_LENGTH);
+  if (!config.keys.length || config.keys.length > MAX_JWK_KEYS) {
+    throw new Error(`jwt.keys must contain between 1 and ${MAX_JWK_KEYS} keys`);
   }
-  if (!config.activeKid.trim()) throw new Error("jwt.activeKid is required");
-  if (!config.keys.length) throw new Error("jwt.keys must contain at least one key");
 
   const kids = new Set<string>();
   for (const key of config.keys) {
     if (!key.kid) throw new Error("Every JWT signing key must have a kid");
+    assertBoundedClaim(key.kid, "JWT kid", MAX_KID_LENGTH);
     if (kids.has(key.kid)) throw new Error(`Duplicate JWT kid: ${key.kid}`);
     kids.add(key.kid);
 
     if (key.kty !== "EC" || key.crv !== "P-256") {
       throw new Error(`JWT key ${key.kid} must be an ES256 P-256 EC JWK`);
     }
-    if (!key.x || !key.y) {
-      throw new Error(`JWT key ${key.kid} must include x and y coordinates`);
+    assertP256Component(key.x, "x coordinate", key.kid);
+    assertP256Component(key.y, "y coordinate", key.kid);
+    if (key.d !== undefined) {
+      assertP256Component(key.d, "private scalar", key.kid);
     }
     if (key.alg && key.alg !== ACCESS_TOKEN_ALGORITHM) {
       throw new Error(`JWT key ${key.kid} must use ${ACCESS_TOKEN_ALGORITHM}`);
+    }
+    if (key.use && key.use !== "sig") {
+      throw new Error(`JWT key ${key.kid} must declare use=sig`);
+    }
+    if (
+      key.key_ops &&
+      !key.key_ops.includes(key.d ? "sign" : "verify")
+    ) {
+      throw new Error(`JWT key ${key.kid} has incompatible key_ops`);
     }
   }
 
@@ -114,6 +231,19 @@ const validateJwkConfig = (config: Authenik8JwkConfig): void => {
   if (!activeKey) throw new Error(`Active JWT kid not found: ${config.activeKid}`);
   if (!activeKey.d) throw new Error(`Active JWT key ${config.activeKid} must be private`);
 };
+
+const cloneJwkConfig = (
+  config: Authenik8JwkConfig,
+): Authenik8JwkConfig => ({
+  ...config,
+  audience: Array.isArray(config.audience)
+    ? [...config.audience]
+    : config.audience,
+  keys: config.keys.map((key) => ({
+    ...key,
+    ...(key.key_ops ? { key_ops: [...key.key_ops] } : {}),
+  })),
+});
 
 export class JwtKeyRing {
   readonly issuer: string;
@@ -123,10 +253,11 @@ export class JwtKeyRing {
 
   constructor(options: JwtKeyRingOptions) {
     if (options.jwk) {
-      validateJwkConfig(options.jwk);
-      this.jwk = options.jwk;
-      this.issuer = options.jwk.issuer;
-      this.audience = options.jwk.audience;
+      const jwk = cloneJwkConfig(options.jwk);
+      validateJwkConfig(jwk);
+      this.jwk = jwk;
+      this.issuer = jwk.issuer;
+      this.audience = jwk.audience;
       return;
     }
 
@@ -134,23 +265,34 @@ export class JwtKeyRing {
       throw new Error("Configure jwt.keys or provide the deprecated jwtSecret");
     }
 
-    this.legacySecret = new TextEncoder().encode(options.legacySecret);
+    this.legacySecret = hmacSecret(options.legacySecret, "JWT HMAC secret");
     this.issuer = options.issuer ?? DEFAULT_TOKEN_ISSUER;
     this.audience = options.audience ?? DEFAULT_TOKEN_AUDIENCE;
+    validateIssuerAndAudience(this.issuer, this.audience, "jwt");
   }
 
   async sign(
     payload: Record<string, unknown>,
     options: SignJwtOptions,
   ): Promise<string> {
+    if (
+      !Number.isSafeInteger(options.expiresInSeconds) ||
+      options.expiresInSeconds < 1 ||
+      options.expiresInSeconds > MAX_GENERIC_TOKEN_TTL_SECONDS
+    ) {
+      throw new Error(
+        `JWT expiry must be between 1 and ${MAX_GENERIC_TOKEN_TTL_SECONDS} seconds`,
+      );
+    }
     const { SignJWT } = await loadJose();
+    const now = Math.floor(Date.now() / 1000);
     const jwt = new SignJWT({ ...payload, tokenUse: options.tokenUse })
       .setProtectedHeader(this.protectedHeader())
       .setIssuer(this.issuer)
       .setAudience(this.audience)
-      .setIssuedAt()
+      .setIssuedAt(now)
       .setJti(randomUUID())
-      .setExpirationTime(options.expiresIn);
+      .setExpirationTime(now + options.expiresInSeconds);
 
     if (this.jwk) {
       return jwt.sign(this.activePrivateJwk());
@@ -173,14 +315,11 @@ export class JwtKeyRing {
         })
       : await jwtVerify<T>(token, this.legacySecret!, {
           algorithms: [LEGACY_TOKEN_ALGORITHM],
+          issuer: this.issuer,
+          audience: this.audience,
         });
 
-    // Pre-JOSE legacy tokens did not carry tokenUse. The asymmetric path always
-    // requires it, while HS256 accepts the missing claim during migration.
-    if (
-      payload.tokenUse !== tokenUse &&
-      (this.jwk || payload.tokenUse !== undefined)
-    ) {
+    if (payload.tokenUse !== tokenUse) {
       throw new Error(`Expected a ${tokenUse} token`);
     }
 
@@ -204,6 +343,14 @@ export class JwtKeyRing {
   }
 }
 
+export const decodeBoundedJwt = async <
+  T extends JWTPayload = JWTPayload,
+>(token: string): Promise<T> => {
+  assertCanonicalCompactJwt(token);
+  const { decodeJwt } = await loadJose();
+  return decodeJwt(token) as T;
+};
+
 export const generateSigningJwk = async (kid?: string): Promise<JWK> => {
   const { calculateJwkThumbprint, exportJWK, generateKeyPair } = await loadJose();
   const { privateKey, publicKey } = await generateKeyPair(ACCESS_TOKEN_ALGORITHM, {
@@ -214,6 +361,7 @@ export const generateSigningJwk = async (kid?: string): Promise<JWK> => {
     exportJWK(publicKey),
   ]);
   const resolvedKid = kid ?? (await calculateJwkThumbprint(publicKeyJwk));
+  assertBoundedClaim(resolvedKid, "JWT kid", MAX_KID_LENGTH);
 
   return {
     ...privateKeyJwk,
@@ -232,10 +380,27 @@ export const verifyAccessTokenWithJwks = async <
   options: PublicJwksVerificationOptions,
 ): Promise<T> => {
   assertCanonicalCompactJwt(token);
+  validateIssuerAndAudience(
+    options.issuer,
+    options.audience,
+    "verification",
+  );
   const { createLocalJWKSet, createRemoteJWKSet, jwtVerify } = await loadJose();
-  const resolver = jwks instanceof URL
-    ? createRemoteJWKSet(jwks)
-    : createLocalJWKSet(jwks);
+  let resolver;
+  if (jwks instanceof URL) {
+    if (
+      jwks.protocol !== "https:" ||
+      jwks.username ||
+      jwks.password ||
+      jwks.hash
+    ) {
+      throw new Error("Remote JWKS URLs must use credential-free HTTPS");
+    }
+    resolver = createRemoteJWKSet(jwks);
+  } else {
+    validatePublicJwks(jwks);
+    resolver = createLocalJWKSet(jwks);
+  }
   const { payload } = await jwtVerify<T>(token, resolver, {
     algorithms: [ACCESS_TOKEN_ALGORITHM],
     issuer: options.issuer,
@@ -246,4 +411,43 @@ export const verifyAccessTokenWithJwks = async <
     throw new Error("Expected an access token");
   }
   return payload;
+};
+
+const validatePublicJwks = (jwks: JSONWebKeySet): void => {
+  if (
+    !jwks ||
+    !Array.isArray(jwks.keys) ||
+    jwks.keys.length === 0 ||
+    jwks.keys.length > MAX_JWK_KEYS
+  ) {
+    throw new Error(
+      `JWKS must contain between 1 and ${MAX_JWK_KEYS} public keys`,
+    );
+  }
+
+  const kids = new Set<string>();
+  for (const key of jwks.keys) {
+    if (!key || typeof key !== "object") {
+      throw new Error("JWKS contains an invalid key");
+    }
+    assertBoundedClaim(key.kid, "JWKS kid", MAX_KID_LENGTH);
+    if (kids.has(key.kid)) {
+      throw new Error(`JWKS contains a duplicate kid: ${key.kid}`);
+    }
+    kids.add(key.kid);
+    if (key.kty !== "EC" || key.crv !== "P-256" || key.d !== undefined) {
+      throw new Error(`JWKS key ${key.kid} must be a public P-256 EC key`);
+    }
+    assertP256Component(key.x, "x coordinate", key.kid);
+    assertP256Component(key.y, "y coordinate", key.kid);
+    if (key.alg && key.alg !== ACCESS_TOKEN_ALGORITHM) {
+      throw new Error(`JWKS key ${key.kid} must use ${ACCESS_TOKEN_ALGORITHM}`);
+    }
+    if (key.use && key.use !== "sig") {
+      throw new Error(`JWKS key ${key.kid} must declare use=sig`);
+    }
+    if (key.key_ops && !key.key_ops.includes("verify")) {
+      throw new Error(`JWKS key ${key.kid} has incompatible key_ops`);
+    }
+  }
 };

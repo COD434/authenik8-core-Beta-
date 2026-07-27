@@ -1,54 +1,59 @@
-import express from "express";
-import request from "supertest";
-import jwt from "jsonwebtoken";
+import type { NextFunction, Request, Response } from "express";
+import { describe, expect, it, vi } from "vitest";
 import { requireAdmin } from "../../middleware/adminService";
 
-describe("requireAdmin", () => {
-  const jwtSecret = "admin-unit-secret";
+const response = () =>
+  ({
+    status: vi.fn().mockReturnThis(),
+    json: vi.fn().mockReturnThis(),
+  }) as unknown as Response;
 
-  const createApp = () => {
-    const app = express();
-
-    app.get(
-      "/admin",
-      requireAdmin({ jwtSecret }),
-      (_req, res) => res.status(200).json({ ok: true })
-    );
-
-    return app;
+const authenticateAs =
+  (role?: string) =>
+  (req: Request, _res: Response, next: NextFunction) => {
+    (req as any).user = { role };
+    next();
   };
 
-  test("rejects requests without a token", async () => {
-    const response = await request(createApp()).get("/admin");
-
-    expect(response.status).toBe(401);
+describe("requireAdmin", () => {
+  it("requires an explicitly supplied session-aware authenticator", () => {
+    expect(() => requireAdmin({} as never)).toThrow(/session-aware requireAuth/);
   });
 
-  test("rejects non-admin roles", async () => {
-    const token = jwt.sign({ id: "user-1", role: "user" }, jwtSecret);
-    const response = await request(createApp())
-      .get("/admin")
-      .set("Authorization", `Bearer ${token}`);
+  it("preserves an upstream authentication denial", async () => {
+    const res = response();
+    const next: NextFunction = vi.fn();
+    const middleware = requireAdmin({
+      requireAuth: (_req, denied, _next) =>
+        denied.status(401).json({ error: "Unauthorized" }),
+    });
 
-    expect(response.status).toBe(403);
+    await middleware({} as Request, res, next);
+    expect(res.status).toHaveBeenCalledWith(401);
+    expect(next).not.toHaveBeenCalled();
   });
 
-  test("rejects tokens without an admin role", async () => {
-    const token = jwt.sign({ id: "user-1" }, jwtSecret);
-    const response = await request(createApp())
-      .get("/admin")
-      .set("Authorization", `Bearer ${token}`);
-
-    expect(response.status).toBe(403);
+  it("requires the exact lower-case admin role", async () => {
+    for (const role of [undefined, "user", "Admin"]) {
+      const res = response();
+      const next: NextFunction = vi.fn();
+      await requireAdmin({ requireAuth: authenticateAs(role) })(
+        {} as Request,
+        res,
+        next,
+      );
+      expect(res.status).toHaveBeenCalledWith(403);
+      expect(next).not.toHaveBeenCalled();
+    }
   });
 
-  test("allows admin tokens", async () => {
-    const token = jwt.sign({ id: "admin-1", role: "admin" }, jwtSecret);
-    const response = await request(createApp())
-      .get("/admin")
-      .set("Authorization", `Bearer ${token}`);
-
-    expect(response.status).toBe(200);
-    expect(response.body).toEqual({ ok: true });
+  it("allows an authenticated exact admin role", async () => {
+    const next: NextFunction = vi.fn();
+    await requireAdmin({ requireAuth: authenticateAs("admin") })(
+      {} as Request,
+      response(),
+      next,
+    );
+    expect(next).toHaveBeenCalledOnce();
   });
 });

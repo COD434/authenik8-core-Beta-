@@ -1,4 +1,5 @@
 import httpMocks from "node-mocks-http";
+import jwt from "jsonwebtoken";
 import {
   createLocalJWKSet,
   decodeJwt,
@@ -12,8 +13,8 @@ import {
 } from "../../auth/jwk";
 import { JWTService } from "../../auth/jwtAuth";
 
-const SECRET = "test-secret";
-const WRONG_SECRET = "wrong-secret";
+const SECRET = "test-secret-32-bytes-minimum-value";
+const WRONG_SECRET = "wrong-secret-32-bytes-minimum-value";
 const BASE64URL = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
 
 const mockRedis = {
@@ -76,12 +77,33 @@ describe("JOSE token signing and verification", () => {
     await expect(makeService().verifyToken(token)).resolves.toBeNull();
   });
 
-  it("rejects an expired token", async () => {
-    const token = await new JWTService({
-      jwtSecret: SECRET,
-      expiry: "-1s",
-    }).signToken({ userId: "u1", email: "a@b.com" });
+  it("enforces issuer and audience on the legacy migration path", async () => {
+    const token = jwt.sign(
+      { userId: "u1", tokenUse: "access" },
+      SECRET,
+      { issuer: "another-service", audience: "another-api" },
+    );
+
     await expect(makeService().verifyToken(token)).resolves.toBeNull();
+  });
+
+  it("rejects an expired token", async () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date("2026-01-01T00:00:00Z"));
+      const service = new JWTService({
+        jwtSecret: SECRET,
+        expiry: "60s",
+      });
+      const token = await service.signToken({
+        userId: "u1",
+        email: "a@b.com",
+      });
+      vi.advanceTimersByTime(61_000);
+      await expect(service.verifyToken(token)).resolves.toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("rejects alg:none, tampered, and malformed tokens", async () => {
@@ -132,11 +154,106 @@ describe("ES256 JWK and rotation", () => {
         issuer: "https://issuer.example",
         audience: "example-api",
       },
-    })).toThrow("x and y coordinates");
+    })).toThrow("x coordinate");
+  });
+
+  it("validates legacy issuer/audience and public verification key sets", async () => {
+    expect(
+      () =>
+        new JWTService({
+          jwtSecret: SECRET,
+          issuer: "issuer\nforged",
+        }),
+    ).toThrow(/issuer/i);
+
+    const signingKey = await generateSigningJwk("private-verification-key");
+    const service = new JWTService({
+      jwk: {
+        keys: [signingKey],
+        activeKid: "private-verification-key",
+        issuer: "https://issuer.example",
+        audience: "example-api",
+      },
+    });
+    const token = await service.signToken({ userId: "u1" });
+    await expect(
+      verifyAccessTokenWithJwks(
+        token,
+        { keys: [signingKey] },
+        {
+          issuer: "https://issuer.example",
+          audience: "example-api",
+        },
+      ),
+    ).rejects.toThrow(/public P-256/i);
+    await expect(
+      verifyAccessTokenWithJwks(
+        token,
+        new URL("http://jwks.example.test/keys"),
+        {
+          issuer: "https://issuer.example",
+          audience: "example-api",
+        },
+      ),
+    ).rejects.toThrow(/HTTPS/i);
+  });
+
+  it("rejects weak HMAC secrets and unsafe access-token lifetimes", () => {
+    expect(() => new JWTService({ jwtSecret: "x" })).toThrow(/32.*4096/);
+    expect(
+      () =>
+        new JWTService({
+          jwtSecret: SECRET,
+          expiry: "2d",
+        }),
+    ).toThrow(/86400/);
+    expect(
+      () =>
+        new JWTService({
+          jwtSecret: SECRET,
+          allowCookieAuth: 1 as never,
+        }),
+    ).toThrow(/boolean/i);
+  });
+
+  it("bounds authorization claims at issuance and verification", async () => {
+    const service = makeService();
+    await expect(
+      service.signToken({
+        userId: "u1",
+        permissions: Array.from(
+          { length: 65 },
+          (_, index) => `records:read-${index}`,
+        ),
+      }),
+    ).rejects.toThrow(/permissions/i);
+    await expect(
+      service.signToken({
+        userId: "u1",
+        tenantId: "tenant\nforged",
+      }),
+    ).rejects.toThrow(/tenantId/i);
+
+    const externallyIssued = jwt.sign(
+      {
+        userId: "u1",
+        tokenUse: "access",
+        roles: Array.from({ length: 65 }, () => "user"),
+      },
+      SECRET,
+      {
+        issuer: "authenik8-core",
+        audience: "authenik8-api",
+        expiresIn: "1h",
+      },
+    );
+    await expect(service.verifyToken(externallyIssued)).resolves.toBeNull();
   });
 
   it("publishes public keys and verifies with kid, issuer, and audience", async () => {
     const signingKey = await generateSigningJwk("current-key");
+    (signingKey as Record<string, unknown>).internalSecret =
+      "must-never-be-published";
     const svc = new JWTService({
       jwk: {
         keys: [signingKey],
@@ -151,6 +268,7 @@ describe("ES256 JWK and rotation", () => {
 
     expect(header).toMatchObject({ alg: "ES256", kid: "current-key", typ: "JWT" });
     expect(jwks.keys[0]).not.toHaveProperty("d");
+    expect(jwks.keys[0]).not.toHaveProperty("internalSecret");
     await expect(
       jwtVerify(token, createLocalJWKSet(jwks), {
         algorithms: ["ES256"],
@@ -170,6 +288,24 @@ describe("ES256 JWK and rotation", () => {
         audience: "example-api",
       }),
     ).resolves.toMatchObject({ userId: "u1", tokenUse: "access" });
+  });
+
+  it("detaches the validated signing key ring from caller mutation", async () => {
+    const signingKey = await generateSigningJwk("detached-key");
+    const config = {
+      keys: [signingKey],
+      activeKid: "detached-key",
+      issuer: "https://issuer.example",
+      audience: "example-api",
+    };
+    const service = new JWTService({ jwk: config });
+    signingKey.d = "caller-mutated-invalid-key";
+    config.keys.splice(0);
+
+    const token = await service.signToken({ userId: "user-1" });
+    await expect(service.verifyToken(token)).resolves.toMatchObject({
+      userId: "user-1",
+    });
   });
 
   it("rejects non-canonical compact token encodings", async () => {
@@ -284,5 +420,38 @@ describe("authenticateJWT middleware", () => {
     const revoked = await run(svc, token);
     expect(revoked.res.statusCode).toBe(403);
     expect(revoked.next).not.toHaveBeenCalled();
+  });
+
+  it("denies a session immediately when context policy quarantines it", async () => {
+    const risk = {
+      isQuarantined: vi.fn().mockResolvedValue(false),
+      assessContext: vi.fn().mockResolvedValue({
+        status: "quarantined",
+        reasons: ["ip_change"],
+      }),
+    };
+    const svc = new JWTService({
+      jwtSecret: SECRET,
+      expiry: "1h",
+      redisClient: mockRedis,
+      risk: risk as any,
+      resolveRequestContext: () => ({
+        ip: "203.0.113.2",
+        device: "browser-b",
+      }),
+    });
+    const token = await svc.signToken(
+      { userId: "u1", email: "a@b.com" },
+      { ip: "203.0.113.1", device: "browser-a" },
+    );
+
+    const result = await run(svc, token);
+
+    expect(result.res.statusCode).toBe(403);
+    expect(risk.assessContext).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "u1" }),
+      { ip: "203.0.113.1", device: "browser-a" },
+      { ip: "203.0.113.2", device: "browser-b" },
+    );
   });
 });

@@ -1,3 +1,4 @@
+import { createHash } from "crypto";
 import { decodeJwt } from "jose";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -7,6 +8,18 @@ import {
   type RefreshServiceOptions,
   type TokenStore,
 } from "../../auth/refreshService";
+import { tokenFingerprint } from "../../auth/tokenFingerprint";
+
+const pairDigest = (first: string, second: string): string =>
+  createHash("sha256")
+    .update(first)
+    .update("\0")
+    .update(second)
+    .digest("base64url");
+const refreshKey = (userId: string, sessionId: string): string =>
+  `refresh:${pairDigest(userId, sessionId)}`;
+const lockKey = (userId: string, sessionId: string): string =>
+  `lock:${pairDigest(userId, sessionId)}`;
 
 const mockLockInstance = {
   acquire: vi.fn(),
@@ -52,7 +65,7 @@ describe("RefreshService", () => {
     options = {
       tokenStore,
       redisClient,
-      refreshTokenSecret: "refresh-secret-test",
+      refreshTokenSecret: "refresh-secret-test-32-bytes-minimum",
       accessTokenSigner,
       issuer: "test-issuer",
       audience: "test-api",
@@ -75,8 +88,8 @@ describe("RefreshService", () => {
     });
     expect(payload.jti).toEqual(expect.any(String));
     expect(tokenStore.set).toHaveBeenCalledWith(
-      "refresh:user123:session-1",
-      token,
+      refreshKey("user123", "session-1"),
+      tokenFingerprint(token),
       60 * 60 * 24 * 7,
     );
     expect(redisClient.hset).toHaveBeenCalledWith(
@@ -97,7 +110,14 @@ describe("RefreshService", () => {
     );
     await expect(
       service.generateRefreshToken({ email: "test@example.com" } as any),
-    ).rejects.toThrow("generateRefreshToken: payload.userId is missing");
+    ).rejects.toThrow("generateRefreshToken: payload.userId");
+    expect(
+      () =>
+        new RefreshService({
+          ...options,
+          rotateRefreshTokens: 1 as never,
+        }),
+    ).toThrow(/boolean/i);
   });
 
   it("rejects missing, malformed, and wrong-purpose tokens", async () => {
@@ -119,12 +139,37 @@ describe("RefreshService", () => {
     vi.mocked(tokenStore.get).mockResolvedValue("different.token");
 
     await expect(service.refresh(token)).rejects.toThrow(InvalidTokenError);
-    expect(tokenStore.del).toHaveBeenCalledWith("refresh:user123:session-1");
+    expect(tokenStore.del).toHaveBeenCalledWith(
+      refreshKey("user123", "session-1"),
+    );
     expect(redisClient.hdel).toHaveBeenCalledWith("sessions:user123", "session-1");
     expect(redisClient.hdel).toHaveBeenCalledWith(
       "refresh-families:user123",
       "session-1",
     );
+  });
+
+  it("reports replay risk before revoking the compromised family", async () => {
+    const risk = {
+      isQuarantined: vi.fn().mockResolvedValue(false),
+      report: vi.fn().mockResolvedValue({
+        status: "quarantined",
+        reasons: ["refresh_replay"],
+      }),
+    };
+    const guarded = new RefreshService({ ...options, risk: risk as any });
+    const token = await guarded.generateRefreshToken(userPayload);
+    vi.mocked(tokenStore.get).mockResolvedValue("different.token");
+
+    await expect(guarded.refresh(token)).rejects.toThrow(InvalidTokenError);
+    expect(risk.report).toHaveBeenCalledWith({
+      type: "refresh_replay",
+      principal: {
+        kind: "human",
+        id: "user123",
+        sessionId: "session-1",
+      },
+    });
   });
 
   it("issues a new access token and releases the lock", async () => {
@@ -137,7 +182,7 @@ describe("RefreshService", () => {
     });
     expect(accessTokenSigner).toHaveBeenCalledWith(userPayload);
     expect(mockLockInstance.release).toHaveBeenCalledWith(
-      "lock:user123:session-1",
+      lockKey("user123", "session-1"),
       "lock-value-xyz",
     );
   });
@@ -151,9 +196,9 @@ describe("RefreshService", () => {
     const result = await rotating.refresh(token);
     expect(result.refreshToken).not.toBe(token);
     expect(tokenStore.compareAndSet).toHaveBeenCalledWith(
-      "refresh:user123:session-1",
+      refreshKey("user123", "session-1"),
       token,
-      result.refreshToken,
+      tokenFingerprint(result.refreshToken!),
       60 * 60 * 24 * 7,
     );
   });
@@ -165,8 +210,30 @@ describe("RefreshService", () => {
     vi.mocked(tokenStore.compareAndSet!).mockResolvedValue(false);
 
     await expect(rotating.refresh(token)).rejects.toThrow("Concurrent refresh detected");
-    expect(tokenStore.del).toHaveBeenCalledWith("refresh:user123:session-1");
+    expect(tokenStore.del).toHaveBeenCalledWith(
+      refreshKey("user123", "session-1"),
+    );
     expect(redisClient.hdel).toHaveBeenCalledWith("sessions:user123", "session-1");
+  });
+
+  it("still revokes a lost refresh race when strict audit delivery fails", async () => {
+    const audit = {
+      emit: vi.fn().mockResolvedValue(undefined),
+    };
+    const rotating = new RefreshService({
+      ...options,
+      rotateRefreshTokens: true,
+      audit,
+    });
+    const token = await rotating.generateRefreshToken(userPayload);
+    audit.emit.mockRejectedValue(new Error("audit unavailable"));
+    vi.mocked(tokenStore.get).mockResolvedValue(token);
+    vi.mocked(tokenStore.compareAndSet!).mockResolvedValue(false);
+
+    await expect(rotating.refresh(token)).rejects.toThrow("audit unavailable");
+    expect(tokenStore.del).toHaveBeenCalledWith(
+      refreshKey("user123", "session-1"),
+    );
   });
 
   it("always releases an acquired lock", async () => {
@@ -175,8 +242,28 @@ describe("RefreshService", () => {
 
     await expect(service.refresh(token)).rejects.toThrow("redis boom");
     expect(mockLockInstance.release).toHaveBeenCalledWith(
-      "lock:user123:session-1",
+      lockKey("user123", "session-1"),
       "lock-value-xyz",
+    );
+  });
+
+  it("revokes rotated state when access-token issuance fails", async () => {
+    const rotating = new RefreshService({
+      ...options,
+      rotateRefreshTokens: true,
+      accessTokenSigner: vi.fn().mockRejectedValue(new Error("signing failed")),
+    });
+    const token = await rotating.generateRefreshToken(userPayload);
+    vi.mocked(tokenStore.get).mockResolvedValue(token);
+    vi.mocked(tokenStore.compareAndSet!).mockResolvedValue(true);
+
+    await expect(rotating.refresh(token)).rejects.toThrow("signing failed");
+    expect(tokenStore.del).toHaveBeenCalledWith(
+      refreshKey("user123", "session-1"),
+    );
+    expect(redisClient.hdel).toHaveBeenCalledWith(
+      "sessions:user123",
+      "session-1",
     );
   });
 
@@ -188,9 +275,35 @@ describe("RefreshService", () => {
 
     await service.revokeAllSessions("user123");
 
-    expect(tokenStore.del).toHaveBeenCalledWith("refresh:user123:session-1");
-    expect(tokenStore.del).toHaveBeenCalledWith("refresh:user123:session-2");
+    expect(tokenStore.del).toHaveBeenCalledWith(
+      refreshKey("user123", "session-1"),
+    );
+    expect(tokenStore.del).toHaveBeenCalledWith(
+      refreshKey("user123", "session-2"),
+    );
     expect(redisClient.del).toHaveBeenCalledWith("refresh-families:user123");
     expect(redisClient.del).toHaveBeenCalledWith("sessions:user123");
+  });
+
+  it("uses collision-resistant compound keys for attacker-influenced identifiers", async () => {
+    await service.generateRefreshToken({
+      userId: "tenant:user",
+      email: "one@example.com",
+      sessionId: "session",
+    });
+    await service.generateRefreshToken({
+      userId: "tenant",
+      email: "two@example.com",
+      sessionId: "user:session",
+    });
+
+    const keys = vi
+      .mocked(tokenStore.set!)
+      .mock.calls.map(([key]) => key);
+    expect(keys).toHaveLength(2);
+    expect(new Set(keys)).toHaveLength(2);
+    expect(keys.every((key) => /^refresh:[A-Za-z0-9_-]{43}$/.test(key))).toBe(
+      true,
+    );
   });
 });

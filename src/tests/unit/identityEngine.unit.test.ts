@@ -1,259 +1,310 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { createIdentityEngine } from '../../oauth/brain/identityEngine';
-import { identityPolicy } from '../../oauth/brain/identityPolicy';
-import type { Provider } from '../../oauth/types';
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { createIdentityEngine } from "../../oauth/brain/identityEngine";
+import {
+  resolveIdentityPolicy,
+  type IdentityPolicy,
+} from "../../oauth/brain/identityPolicy";
+import type {
+  IdentityUser,
+  OAuthIdentityAdapter,
+  Provider,
+} from "../../oauth/types";
 
-const mockAdapter = {
-  findUserByEmail: vi.fn(),
-  findUserByProvider: vi.fn(),
-  createUser: vi.fn(),
-  linkProvider: vi.fn(),
+const user: IdentityUser = {
+  id: "user-123",
+  email: "test@example.com",
+  role: "ADMIN",
+  providers: [{ provider: "google", providerId: "google-456" }],
 };
-
-const mockTokenService = {
-  signAccessToken: vi.fn().mockReturnValue('mock-access-token'),
-  generateRefreshToken: vi.fn().mockResolvedValue('mock-refresh-token'),
+const otherUser: IdentityUser = {
+  id: "other-user",
+  email: "other@example.com",
+  providers: [{ provider: "github", providerId: "github-other" }],
 };
-
-const mockUser = {
-  id: 'user-123',
-  email: 'test@example.com',
-  role: 'ADMIN',
-  providers: [{ provider: 'google', providerId: 'google-456' }],
-};
-
-const baseProfile = {
-  email: 'test@example.com',
-  provider: 'google' as Provider,
-  providerId: 'google-456',
+const profile = {
+  email: "test@example.com",
+  provider: "google" as Provider,
+  providerId: "google-456",
   email_verified: true,
 };
 
-beforeEach(() => {
-  vi.clearAllMocks();
-});
-
-describe('createIdentityEngine', () => {
-  let engine: ReturnType<typeof createIdentityEngine>;
+describe("createIdentityEngine", () => {
+  let adapter: OAuthIdentityAdapter;
+  let issueTokens: (
+    payload: {
+      userId: string;
+      email: string;
+      sessionId: string;
+      role?: string;
+    },
+  ) => Promise<{ accessToken: string; refreshToken: string }>;
+  let policy: IdentityPolicy;
 
   beforeEach(() => {
-    engine = createIdentityEngine(mockAdapter, mockTokenService);
+    policy = {
+      autoLinkOnVerifiedEmailMatch: false,
+      allowUnverifiedAutoLink: false,
+    };
+    adapter = {
+      findUserById: vi.fn().mockResolvedValue(null),
+      findUserByEmail: vi.fn().mockResolvedValue(null),
+      findUserByProvider: vi.fn().mockResolvedValue(null),
+      createUser: vi.fn(),
+      linkProvider: vi.fn().mockResolvedValue(undefined),
+    };
+    issueTokens = vi.fn(async () => ({
+      accessToken: "mock-access-token",
+      refreshToken: "mock-refresh-token",
+    }));
   });
 
-  
-  describe('missing email guard', () => {
-    it('throws when profile has no email', async () => {
-      await expect(
-        engine.resolveOAuth({
-          profile: { ...baseProfile, email: '' },
-          mode: 'login',
-        })
-      ).rejects.toThrow('OAuth profile missing email');
-    });
+  const engine = () =>
+    createIdentityEngine(adapter, { issueTokens }, undefined, policy);
+
+  it("rejects missing or malformed identity claims", async () => {
+    await expect(
+      engine().resolveOAuth({
+        profile: { ...profile, email: "" },
+        mode: "login",
+      }),
+    ).rejects.toThrow(/invalid email/i);
+    await expect(
+      engine().resolveOAuth({
+        profile: { ...profile, providerId: "" },
+        mode: "login",
+      }),
+    ).rejects.toThrow(/providerId/i);
+    await expect(
+      engine().resolveOAuth({
+        profile: { ...profile, email: "multiple@@example.com" },
+        mode: "login",
+      }),
+    ).rejects.toThrow(/invalid email/i);
+    await expect(
+      engine().resolveOAuth({
+        profile: { ...profile, provider: "GOOGLE" as Provider },
+        mode: "login",
+      }),
+    ).rejects.toThrow(/provider/i);
+    await expect(
+      engine().resolveOAuth({
+        profile: { ...profile, email: 42 as never },
+        mode: "login",
+      }),
+    ).rejects.toThrow(/invalid email/i);
+    await expect(
+      engine().resolveOAuth({
+        profile,
+        mode: "unexpected" as never,
+      }),
+    ).rejects.toThrow(/mode/i);
+    expect(adapter.findUserByProvider).not.toHaveBeenCalled();
   });
 
+  it("issues one atomic token pair for an existing provider login", async () => {
+    vi.mocked(adapter.findUserByProvider).mockResolvedValue(user);
 
-  describe('existing provider login', () => {
-    it('returns EXISTING_PROVIDER_LOGIN when provider is already registered', async () => {
-      mockAdapter.findUserByProvider.mockResolvedValue(mockUser);
-
-      const result = await engine.resolveOAuth({
-        profile: baseProfile,
-        mode: 'login',
-      });
-
-      expect(result.type).toBe('EXISTING_PROVIDER_LOGIN');
-      expect(result.user).toEqual(mockUser);
-      expect(result.accessToken).toBe('mock-access-token');
-      expect(result.refreshToken).toBe('mock-refresh-token');
-      expect(mockTokenService.signAccessToken).toHaveBeenCalledWith(expect.objectContaining({
-        userId: mockUser.id,
-        email: mockUser.email,
-        role: 'admin',
-        sessionId: expect.any(String),
-      }));
+    const result = await engine().resolveOAuth({
+      profile,
+      mode: "login",
     });
 
-    it('does not call createUser or linkProvider for existing provider', async () => {
-      mockAdapter.findUserByProvider.mockResolvedValue(mockUser);
-
-      await engine.resolveOAuth({ profile: baseProfile, mode: 'login' });
-
-      expect(mockAdapter.createUser).not.toHaveBeenCalled();
-      expect(mockAdapter.linkProvider).not.toHaveBeenCalled();
+    expect(result).toMatchObject({
+      type: "EXISTING_PROVIDER_LOGIN",
+      user,
+      accessToken: "mock-access-token",
+      refreshToken: "mock-refresh-token",
     });
-  });
-
-  
-  describe('link mode', () => {
-    beforeEach(() => {
-      mockAdapter.findUserByProvider.mockResolvedValue(null);
-    });
-
-    it('returns INVALID_LINK_REQUEST when userId is missing', async () => {
-      const result = await engine.resolveOAuth({
-        profile: baseProfile,
-        mode: 'link',
-        userId: undefined,
-      });
-
-      expect(result.type).toBe('INVALID_LINK_REQUEST');
-      expect(result.message).toMatch(/missing authenticated user/i);
-      expect(mockAdapter.linkProvider).not.toHaveBeenCalled();
-    });
-
-    it('links provider and returns LINK_PROVIDER on success', async () => {
-      mockAdapter.linkProvider.mockResolvedValue(undefined);
-      mockAdapter.findUserByEmail.mockResolvedValue(mockUser);
-
-      const result = await engine.resolveOAuth({
-        profile: baseProfile,
-        mode: 'link',
-        userId: 'user-123',
-      });
-
-      expect(result.type).toBe('LINK_PROVIDER');
-      expect(result.user).toEqual(mockUser);
-      expect(result.success).toBe(true);
-      expect(mockAdapter.linkProvider).toHaveBeenCalledWith(
-        'user-123',
-        'google',
-        'google-456'
-      );
-    });
-
-    it('falls back to findUserByProvider when findUserByEmail returns null after link', async () => {
-      mockAdapter.linkProvider.mockResolvedValue(undefined);
-      mockAdapter.findUserByEmail.mockResolvedValue(null);
-      mockAdapter.findUserByProvider.mockResolvedValueOnce(null) // initial check
-                                     .mockResolvedValueOnce(mockUser); // fallback
-
-      const result = await engine.resolveOAuth({
-        profile: baseProfile,
-        mode: 'link',
-        userId: 'user-123',
-      });
-
-      expect(result.type).toBe('LINK_PROVIDER');
-      expect(result.user).toEqual(mockUser);
-    });
-
-    it('throws LINK_PROVIDER_user resolution failed when both lookups return null', async () => {
-      mockAdapter.linkProvider.mockResolvedValue(undefined);
-      mockAdapter.findUserByEmail.mockResolvedValue(null);
-      mockAdapter.findUserByProvider.mockResolvedValue(null);
-
-      await expect(
-        engine.resolveOAuth({
-          profile: baseProfile,
-          mode: 'link',
-          userId: 'user-123',
-        })
-      ).rejects.toThrow('LINK_PROVIDER: user resolution failed');
+    expect(vi.mocked(issueTokens)).toHaveBeenCalledOnce();
+    expect(vi.mocked(issueTokens)).toHaveBeenCalledWith({
+      userId: user.id,
+      email: user.email,
+      role: "admin",
+      sessionId: expect.any(String),
     });
   });
 
-  
-  describe('existing user found by email', () => {
-    beforeEach(() => {
-      mockAdapter.findUserByProvider.mockResolvedValue(null);
-      mockAdapter.findUserByEmail.mockResolvedValue(mockUser);
+  it("never turns a link callback into a login for the provider owner", async () => {
+    vi.mocked(adapter.findUserByProvider).mockResolvedValue({
+      ...otherUser,
+      providers: [
+        { provider: profile.provider, providerId: profile.providerId },
+      ],
+    });
+    vi.mocked(adapter.findUserById).mockResolvedValue(user);
+
+    const result = await engine().resolveOAuth({
+      profile,
+      mode: "link",
+      userId: user.id,
     });
 
-    it('returns EXISTING_PROVIDER_LOGIN when auto-link is permitted', async () => {
-      vi.spyOn(identityPolicy, 'autoLinkOnVerifiedEmailMatch', 'get').mockReturnValue(true);
-
-      const result = await engine.resolveOAuth({
-        profile: { ...baseProfile, email_verified: true },
-        mode: 'login',
-      });
-
-      expect(result.type).toBe('EXISTING_PROVIDER_LOGIN');
-      expect(result.user).toEqual(mockUser);
-      expect(result.accessToken).toBe('mock-access-token');
+    expect(result).toMatchObject({
+      type: "INVALID_LINK_REQUEST",
+      message: "Provider cannot be linked",
     });
-
-    it('returns LINK_REQUIRED when email is unverified and policy forbids auto-link', async () => {
-      vi.spyOn(identityPolicy, 'autoLinkOnVerifiedEmailMatch', 'get').mockReturnValue(true);
-      vi.spyOn(identityPolicy, 'allowUnverifiedAutoLink', 'get').mockReturnValue(false);
-
-      const result = await engine.resolveOAuth({
-        profile: { ...baseProfile, email_verified: false },
-        mode: 'login',
-      });
-
-      expect(result.type).toBe('LINK_REQUIRED');
-      expect(result.email).toBe(baseProfile.email);
-      expect(result.provider).toBe(baseProfile.provider);
-    });
-
-    it('accepts email_verified as the string "true"', async () => {
-      vi.spyOn(identityPolicy, 'autoLinkOnVerifiedEmailMatch', 'get').mockReturnValue(true);
-
-      const result = await engine.resolveOAuth({
-        profile: { ...baseProfile, email_verified: 'true' },
-        mode: 'login',
-      });
-
-      expect(result.type).toBe('EXISTING_PROVIDER_LOGIN');
-    });
-
-    it('returns LINK_REQUIRED when verified but policy disables auto-link', async () => {
-      vi.spyOn(identityPolicy, 'autoLinkOnVerifiedEmailMatch', 'get').mockReturnValue(false);
-      vi.spyOn(identityPolicy, 'allowUnverifiedAutoLink', 'get').mockReturnValue(false);
-
-      const result = await engine.resolveOAuth({
-        profile: { ...baseProfile, email_verified: true },
-        mode: 'login',
-      });
-
-      expect(result.type).toBe('LINK_REQUIRED');
-    });
+    expect(adapter.linkProvider).not.toHaveBeenCalled();
+    expect(vi.mocked(issueTokens)).not.toHaveBeenCalled();
   });
 
-  
-  describe('new user creation', () => {
-    beforeEach(() => {
-      mockAdapter.findUserByProvider.mockResolvedValue(null);
-      mockAdapter.findUserByEmail.mockResolvedValue(null);
-      mockAdapter.createUser.mockResolvedValue(mockUser);
+  it("rejects an adapter index that returns a user without the exact provider", async () => {
+    vi.mocked(adapter.findUserByProvider).mockResolvedValue(otherUser);
+
+    await expect(
+      engine().resolveOAuth({ profile, mode: "login" }),
+    ).rejects.toThrow(/provider mismatch/i);
+    expect(vi.mocked(issueTokens)).not.toHaveBeenCalled();
+  });
+
+  it("links only to the authenticated state user and verifies the link", async () => {
+    const linked = {
+      ...user,
+      email: "account-email@example.com",
+      providers: [...user.providers, { provider: "github", providerId: "gh-1" }],
+    };
+    vi.mocked(adapter.findUserById)
+      .mockResolvedValueOnce(user)
+      .mockResolvedValueOnce(linked);
+
+    const result = await engine().resolveOAuth({
+      profile: {
+        ...profile,
+        email: "provider-email@example.com",
+        provider: "github",
+        providerId: "gh-1",
+      },
+      mode: "link",
+      userId: user.id,
     });
 
-    it('returns NEW_USER_CREATION for a brand new user', async () => {
-      const result = await engine.resolveOAuth({
-        profile: baseProfile,
-        mode: 'login',
-      });
+    expect(adapter.findUserByEmail).not.toHaveBeenCalled();
+    expect(adapter.linkProvider).toHaveBeenCalledWith(
+      user.id,
+      "github",
+      "gh-1",
+    );
+    expect(result).toMatchObject({ type: "LINK_PROVIDER", user: linked });
+    expect(vi.mocked(issueTokens)).not.toHaveBeenCalled();
+  });
 
-      expect(result.type).toBe('NEW_USER_CREATION');
-      expect(result.user).toEqual(mockUser);
-      expect(result.accessToken).toBe('mock-access-token');
-      expect(result.refreshToken).toBe('mock-refresh-token');
+  it("requires an authenticated target for link mode", async () => {
+    const result = await engine().resolveOAuth({
+      profile,
+      mode: "link",
+    });
+    expect(result.type).toBe("INVALID_LINK_REQUEST");
+    expect(adapter.linkProvider).not.toHaveBeenCalled();
+  });
+
+  it("rejects an adapter ID lookup that returns a different link target", async () => {
+    vi.mocked(adapter.findUserById).mockResolvedValue(otherUser);
+
+    const result = await engine().resolveOAuth({
+      profile,
+      mode: "link",
+      userId: user.id,
     });
 
-    it('calls createUser with correct args', async () => {
-      await engine.resolveOAuth({ profile: baseProfile, mode: 'login' });
+    expect(result.type).toBe("INVALID_LINK_REQUEST");
+    expect(adapter.linkProvider).not.toHaveBeenCalled();
+    expect(vi.mocked(issueTokens)).not.toHaveBeenCalled();
+  });
 
-      expect(mockAdapter.createUser).toHaveBeenCalledWith({
-        email: baseProfile.email,
-        provider: baseProfile.provider,
-        providerId: baseProfile.providerId,
-      });
+  it("does not issue tokens for an email match when auto-link is disabled", async () => {
+    vi.mocked(adapter.findUserByEmail).mockResolvedValue(user);
+
+    const result = await engine().resolveOAuth({ profile, mode: "login" });
+
+    expect(result.type).toBe("LINK_REQUIRED");
+    expect(adapter.linkProvider).not.toHaveBeenCalled();
+    expect(vi.mocked(issueTokens)).not.toHaveBeenCalled();
+  });
+
+  it("persists and verifies an explicitly permitted verified-email link before tokens", async () => {
+    policy = {
+      ...policy,
+      autoLinkOnVerifiedEmailMatch: true,
+    };
+    const linked = {
+      ...user,
+      providers: [...user.providers, { provider: "github", providerId: "gh-2" }],
+    };
+    vi.mocked(adapter.findUserByEmail).mockResolvedValue(user);
+    vi.mocked(adapter.findUserByProvider)
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(linked);
+
+    const result = await engine().resolveOAuth({
+      profile: {
+        ...profile,
+        provider: "github",
+        providerId: "gh-2",
+      },
+      mode: "login",
     });
 
-    it('signs tokens with the new user payload', async () => {
-      await engine.resolveOAuth({ profile: baseProfile, mode: 'login' });
+    expect(adapter.linkProvider).toHaveBeenCalledBefore(vi.mocked(issueTokens));
+    expect(result.type).toBe("EXISTING_PROVIDER_LOGIN");
+  });
 
-      expect(mockTokenService.signAccessToken).toHaveBeenCalledWith(expect.objectContaining({
-        userId: mockUser.id,
-        email: mockUser.email,
-        sessionId: expect.any(String),
-      }));
-      expect(mockTokenService.generateRefreshToken).toHaveBeenCalledWith(expect.objectContaining({
-        userId: mockUser.id,
-        email: mockUser.email,
-        sessionId: expect.any(String),
-      }));
+  it("does not treat string-like verification values as verified email", async () => {
+    policy = {
+      ...policy,
+      autoLinkOnVerifiedEmailMatch: true,
+    };
+    vi.mocked(adapter.findUserByEmail).mockResolvedValue(user);
+
+    await expect(
+      engine().resolveOAuth({
+        profile: { ...profile, email_verified: "true" as never },
+        mode: "login",
+      }),
+    ).rejects.toThrow(/verification claim/i);
+    expect(adapter.linkProvider).not.toHaveBeenCalled();
+    expect(vi.mocked(issueTokens)).not.toHaveBeenCalled();
+  });
+
+  it("issues tokens for a newly and atomically created user", async () => {
+    vi.mocked(adapter.createUser).mockResolvedValue({
+      status: "created",
+      user,
     });
+
+    const result = await engine().resolveOAuth({ profile, mode: "login" });
+
+    expect(result.type).toBe("NEW_USER_CREATION");
+    expect(vi.mocked(issueTokens)).toHaveBeenCalledOnce();
+  });
+
+  it("fails closed when a concurrent create reports an email collision", async () => {
+    vi.mocked(adapter.createUser).mockResolvedValue({
+      status: "existing-email",
+      user,
+    });
+
+    const result = await engine().resolveOAuth({ profile, mode: "login" });
+
+    expect(result.type).toBe("LINK_REQUIRED");
+    expect(vi.mocked(issueTokens)).not.toHaveBeenCalled();
+  });
+
+  it("accepts a concurrent create only when the exact provider won", async () => {
+    vi.mocked(adapter.createUser).mockResolvedValue({
+      status: "existing-provider",
+      user,
+    });
+
+    const result = await engine().resolveOAuth({ profile, mode: "login" });
+
+    expect(result.type).toBe("EXISTING_PROVIDER_LOGIN");
+    expect(vi.mocked(issueTokens)).toHaveBeenCalledOnce();
+  });
+
+  it("requires policy flags to be actual booleans", () => {
+    expect(() =>
+      resolveIdentityPolicy({
+        autoLinkOnVerifiedEmailMatch: "true" as never,
+      }),
+    ).toThrow(/boolean/i);
   });
 });

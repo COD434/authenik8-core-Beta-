@@ -4,136 +4,294 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.SecurityModule = void 0;
+const crypto_1 = require("crypto");
 const helmet_1 = __importDefault(require("helmet"));
-const ioredis_1 = __importDefault(require("ioredis"));
 const rate_limiter_flexible_1 = require("rate-limiter-flexible");
-const ip_address_1 = require("ip-address");
-const WHITELIST_KEY = "whitelist:ips";
+const keyNamespace_1 = require("../redis/keyNamespace");
+const requestContext_1 = require("./requestContext");
 const IP_EXPIRATION_SECONDS = 7 * 24 * 60 * 60;
-const whitelistEntryKey = (entry) => `${WHITELIST_KEY}:entry:${encodeURIComponent(entry)}`;
+const MAX_IP_EXPIRATION_SECONDS = 366 * 24 * 60 * 60;
+const REDIS_ENTRY_BATCH_SIZE = 500;
+const EXACT_ALLOW_SCRIPT = `
+if redis.call("SISMEMBER", KEYS[1], ARGV[1]) == 0 then
+  return 0
+end
+if redis.call("EXISTS", KEYS[2]) == 1 then
+  return 1
+end
+redis.call("SREM", KEYS[1], ARGV[1])
+return 0
+`;
+const positiveInteger = (value, fallback, name, maximum) => {
+    const resolved = value ?? fallback;
+    if (!Number.isSafeInteger(resolved) ||
+        resolved <= 0 ||
+        resolved > maximum) {
+        throw new Error(`${name} must be between 1 and ${maximum}`);
+    }
+    return resolved;
+};
+const validateBooleanOptions = (options) => {
+    const entries = [
+        ["rateLimiterEnabled", options.rateLimiterEnabled],
+        ["enableRateLimiter", options.enableRateLimiter],
+        ["whiteListEnabled", options.whiteListEnabled],
+        ["enableWhitelist", options.enableWhitelist],
+        ["helmetEnabled", options.helmetEnabled],
+        ["enableHelmet", options.enableHelmet],
+        ["trustProxyHeaders", options.trustProxyHeaders],
+    ];
+    const invalid = entries.find(([, value]) => value !== undefined && typeof value !== "boolean");
+    if (invalid) {
+        throw new Error(`${invalid[0]} must be a boolean`);
+    }
+    const aliases = [
+        [
+            "rateLimiterEnabled",
+            options.rateLimiterEnabled,
+            "enableRateLimiter",
+            options.enableRateLimiter,
+        ],
+        [
+            "whiteListEnabled",
+            options.whiteListEnabled,
+            "enableWhitelist",
+            options.enableWhitelist,
+        ],
+        [
+            "helmetEnabled",
+            options.helmetEnabled,
+            "enableHelmet",
+            options.enableHelmet,
+        ],
+    ];
+    const conflict = aliases.find(([, current, , legacy]) => current !== undefined &&
+        legacy !== undefined &&
+        current !== legacy);
+    if (conflict) {
+        throw new Error(`${conflict[0]} conflicts with ${conflict[2]}`);
+    }
+};
 class SecurityModule {
     constructor(options = {}) {
-        this.whiteListEnabled = options.whiteListEnabled ?? true;
-        this.helmetEnabled = options.helmetEnabled ?? true;
-        this.rateLimiterEnabled = options.rateLimiterEnabled ?? true;
-        this.trustProxyHeaders = options.trustProxyHeaders ?? false;
-        this.redisClient = options.redisClient || new ioredis_1.default({
-            host: process.env.REDIS_HOST || "127.0.0.1",
-            port: Number(process.env.REDIS_PORT || 6379),
-            enableOfflineQueue: false,
-            retryStrategy: (times) => Math.min(times * 50, 2000),
-            maxRetriesPerRequest: 10,
-        });
+        validateBooleanOptions(options);
+        this.whiteListEnabled =
+            options.whiteListEnabled ?? options.enableWhitelist ?? true;
+        this.helmetEnabled =
+            options.helmetEnabled ?? options.enableHelmet ?? true;
+        this.rateLimiterEnabled =
+            options.rateLimiterEnabled ?? options.enableRateLimiter ?? true;
+        this.audit = options.audit;
+        this.helmetOptions = options.helmetOptions;
+        if (options.trustProxyHeaders === true &&
+            (!options.trustedProxyCidrs || options.trustedProxyCidrs.length === 0)) {
+            throw new Error("trustProxyHeaders requires at least one trustedProxyCidrs network");
+        }
+        this.resolveClientIp = (0, requestContext_1.createClientIpResolver)(options.trustedProxyCidrs ?? []);
+        if (!options.redisClient) {
+            throw new Error("SecurityModule requires an explicit Redis client");
+        }
+        this.redisClient = options.redisClient;
+        const prefix = (0, keyNamespace_1.validateRedisKeyPrefix)(options.keyPrefix ?? "authenik8:security");
+        const allowlistPrefix = `${prefix}:{allowlist}`;
+        this.exactSetKey = `${allowlistPrefix}:exact`;
+        this.cidrSetKey = `${allowlistPrefix}:cidr`;
+        this.entryPrefix = `${allowlistPrefix}:entry`;
         if (this.rateLimiterEnabled) {
             this.rateLimiter = new rate_limiter_flexible_1.RateLimiterRedis({
                 storeClient: this.redisClient,
-                keyPrefix: "rate_limit",
-                points: options.rateLimitPoints || 100,
-                duration: options.rateLimitDuration || 60,
-                blockDuration: options.rateLimitBlock || 300,
+                keyPrefix: `${prefix}:rate-limit`,
+                points: positiveInteger(options.rateLimitPoints, 100, "rateLimitPoints", 1000000),
+                duration: positiveInteger(options.rateLimitDuration, 60, "rateLimitDuration", MAX_IP_EXPIRATION_SECONDS),
+                blockDuration: positiveInteger(options.rateLimitBlock, 300, "rateLimitBlock", MAX_IP_EXPIRATION_SECONDS),
             });
         }
         this.redisClient.on("error", () => { });
     }
+    entryKey(entry) {
+        const id = (0, crypto_1.createHash)("sha256").update(entry).digest("base64url");
+        return `${this.entryPrefix}:${id}`;
+    }
+    async activeEntries(setKey, entries) {
+        if (entries.length === 0)
+            return [];
+        const active = [];
+        const expired = [];
+        for (let offset = 0; offset < entries.length; offset += REDIS_ENTRY_BATCH_SIZE) {
+            const batch = entries.slice(offset, offset + REDIS_ENTRY_BATCH_SIZE);
+            const markers = await this.redisClient.mget(...batch.map((entry) => this.entryKey(entry)));
+            batch.forEach((entry, index) => {
+                if (markers[index] !== null)
+                    active.push(entry);
+                else
+                    expired.push(entry);
+            });
+        }
+        if (expired.length > 0) {
+            for (let offset = 0; offset < expired.length; offset += REDIS_ENTRY_BATCH_SIZE) {
+                await this.redisClient.srem(setKey, ...expired.slice(offset, offset + REDIS_ENTRY_BATCH_SIZE));
+            }
+        }
+        return active;
+    }
     async isAllowed(ip) {
         if (!this.whiteListEnabled)
             return true;
-        try {
-            const exists = await this.redisClient.sismember(WHITELIST_KEY, ip);
-            if (exists === 1)
-                return true;
-            if (ip === "::1" || ip === "127.0.0.1")
-                return true;
-            const entries = await this.listIPs();
-            for (const entry of entries) {
-                if (entry.includes("/")) {
-                    if (new ip_address_1.Address4(ip).isInSubnet(new ip_address_1.Address4(entry)))
-                        return true;
-                }
-            }
+        const normalizedIp = (0, requestContext_1.normalizeIp)(ip);
+        if (!normalizedIp)
             return false;
+        try {
+            const exactAllowed = Number(await this.redisClient.eval(EXACT_ALLOW_SCRIPT, 2, this.exactSetKey, this.entryKey(normalizedIp), normalizedIp));
+            if (exactAllowed === 1)
+                return true;
+            const cidrs = await this.redisClient.smembers(this.cidrSetKey);
+            const activeCidrs = await this.activeEntries(this.cidrSetKey, cidrs);
+            return activeCidrs.some((cidr) => (0, requestContext_1.isIpInCidr)(normalizedIp, cidr));
         }
         catch {
             return false;
         }
     }
     async addIP(ipOrCIDR, ttl = IP_EXPIRATION_SECONDS) {
-        await this.redisClient.sadd(WHITELIST_KEY, ipOrCIDR);
-        await this.redisClient.set(whitelistEntryKey(ipOrCIDR), "1", "EX", ttl);
+        const entry = (0, requestContext_1.normalizeIpOrCidr)(ipOrCIDR);
+        if (!entry)
+            throw new Error("Invalid IP address or CIDR");
+        if (!Number.isSafeInteger(ttl) ||
+            ttl <= 0 ||
+            ttl > MAX_IP_EXPIRATION_SECONDS) {
+            throw new Error(`IP allowlist TTL must be between 1 and ${MAX_IP_EXPIRATION_SECONDS} seconds`);
+        }
+        const setKey = entry.includes("/") ? this.cidrSetKey : this.exactSetKey;
+        await this.redisClient
+            .multi()
+            .sadd(setKey, entry)
+            .set(this.entryKey(entry), "1", "EX", ttl)
+            .exec();
+        await this.audit?.emit({
+            type: "security.ip_added",
+            severity: "warning",
+            outcome: "success",
+            actor: { type: "system" },
+            metadata: { entry, ttl },
+        });
     }
     async removeIP(ipOrCIDR) {
-        await this.redisClient.srem(WHITELIST_KEY, ipOrCIDR);
-        await this.redisClient.del(whitelistEntryKey(ipOrCIDR));
+        const entry = (0, requestContext_1.normalizeIpOrCidr)(ipOrCIDR);
+        if (!entry)
+            throw new Error("Invalid IP address or CIDR");
+        const setKey = entry.includes("/") ? this.cidrSetKey : this.exactSetKey;
+        await this.redisClient
+            .multi()
+            .srem(setKey, entry)
+            .del(this.entryKey(entry))
+            .exec();
+        await this.audit?.emit({
+            type: "security.ip_removed",
+            severity: "warning",
+            outcome: "success",
+            actor: { type: "system" },
+            metadata: { entry },
+        });
     }
     async listIPs() {
-        const entries = await this.redisClient.smembers(WHITELIST_KEY);
-        const activeEntries = [];
-        for (const entry of entries) {
-            const exists = await this.redisClient.exists(whitelistEntryKey(entry));
-            if (exists === 1) {
-                activeEntries.push(entry);
-            }
-            else {
-                await this.redisClient.srem(WHITELIST_KEY, entry);
-            }
-        }
-        return activeEntries;
-    }
-    getClientIp(req) {
-        if (this.trustProxyHeaders) {
-            const forwarded = req.headers["x-forwarded-for"]?.toString().split(",")[0]?.trim();
-            if (forwarded) {
-                return forwarded;
-            }
-        }
-        return req.ip || req.socket.remoteAddress || "unknown";
+        const [exactEntries, cidrEntries] = await Promise.all([
+            this.redisClient.smembers(this.exactSetKey),
+            this.redisClient.smembers(this.cidrSetKey),
+        ]);
+        const [activeExact, activeCidrs] = await Promise.all([
+            this.activeEntries(this.exactSetKey, exactEntries),
+            this.activeEntries(this.cidrSetKey, cidrEntries),
+        ]);
+        return [...activeExact, ...activeCidrs].sort();
     }
     whiteListMiddleware() {
         return async (req, res, next) => {
             if (!this.whiteListEnabled)
                 return next();
-            const clientIP = this.getClientIp(req);
-            if (await this.isAllowed(clientIP))
+            const clientIp = this.resolveClientIp(req);
+            if (await this.isAllowed(clientIp))
                 return next();
-            res.status(403).json({ error: "Access denied" });
+            await this.audit?.emit({
+                type: "security.ip_denied",
+                severity: "warning",
+                outcome: "denied",
+                actor: { type: "unknown" },
+                metadata: { ip: clientIp },
+            });
+            return res.status(403).json({ error: "Access denied" });
         };
     }
     rateLimiterMiddleware() {
-        return (req, res, next) => {
+        return async (req, res, next) => {
             if (!this.rateLimiter || !this.rateLimiterEnabled)
                 return next();
-            const ip = req.ip || req.socket.remoteAddress || "unknown";
-            this.rateLimiter.consume(ip).then(() => next()).catch(() => res.status(429).send("Too many Requests"));
+            const ip = this.resolveClientIp(req);
+            try {
+                await this.rateLimiter.consume(ip);
+                return next();
+            }
+            catch (error) {
+                if (!isRateLimiterRejection(error)) {
+                    return res
+                        .status(503)
+                        .send("Security rate limiter unavailable");
+                }
+                await this.audit?.emit({
+                    type: "security.rate_limited",
+                    severity: "warning",
+                    outcome: "denied",
+                    actor: { type: "unknown" },
+                    metadata: { ip },
+                });
+                return res.status(429).send("Too many Requests");
+            }
         };
     }
     helmetMiddleware() {
         if (!this.helmetEnabled) {
-            return (req, res, next) => next();
+            return (_req, _res, next) => next();
         }
-        const helmetDirectives = {
-            defaultSrc: ["'self'"],
-            scriptSrc: ["'self'", "'unsafe-inline'", "trusted-cdn.com"],
-            styleSrc: ["'self'"],
-            imgSrc: ["'self'", "data:", "trusted-cdn.com"],
-            fontSrc: ["'self'", "trusted-cdn.com"],
-            connectSrc: ["'self'", "api.trusted-domain.com"],
-            frameSrc: ["'none'"],
-            objectSrc: ["'none'"],
-            upgradeInsecureRequests: [],
-            reportUri: "/csp-violation-report",
-        };
+        if (this.helmetOptions)
+            return (0, helmet_1.default)(this.helmetOptions);
         return (0, helmet_1.default)({
             contentSecurityPolicy: {
-                directives: helmetDirectives, reportOnly: process.env.NODE_ENV !== "production"
+                directives: {
+                    defaultSrc: ["'self'"],
+                    scriptSrc: ["'self'"],
+                    styleSrc: ["'self'"],
+                    imgSrc: ["'self'", "data:"],
+                    fontSrc: ["'self'"],
+                    connectSrc: ["'self'"],
+                    frameAncestors: ["'none'"],
+                    objectSrc: ["'none'"],
+                    baseUri: ["'self'"],
+                    formAction: ["'self'"],
+                    upgradeInsecureRequests: [],
+                },
             },
-            hsts: { maxAge: 315366000,
-                includeSubDomains: true, preload: true },
-            xxsFilter: true,
+            hsts: {
+                maxAge: 63072000,
+                includeSubDomains: true,
+                preload: true,
+            },
             noSniff: true,
             frameguard: { action: "deny" },
-            referrerPolicy: { policy: "same-origin" },
+            referrerPolicy: { policy: "no-referrer" },
         });
     }
 }
 exports.SecurityModule = SecurityModule;
+const isRateLimiterRejection = (value) => {
+    if (!value || typeof value !== "object")
+        return false;
+    const candidate = value;
+    return (typeof candidate.msBeforeNext === "number" &&
+        Number.isFinite(candidate.msBeforeNext) &&
+        candidate.msBeforeNext >= 0 &&
+        typeof candidate.remainingPoints === "number" &&
+        Number.isFinite(candidate.remainingPoints) &&
+        typeof candidate.consumedPoints === "number" &&
+        Number.isFinite(candidate.consumedPoints) &&
+        candidate.consumedPoints >= 0);
+};
 //# sourceMappingURL=ipService.js.map

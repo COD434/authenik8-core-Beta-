@@ -13,7 +13,9 @@ export default defineConfig({
     testTimeout: 15000,
     hookTimeout: 15000,
     include: [
-      "src/tests/integration/con.test.ts",
+      // CI intentionally uses ioredis-mock; this still exercises two concurrent
+      // SDK calls and keeps the real-Redis contract in focused store tests.
+      "src/tests/tests/con.test.ts",
       "src/tests/integration/full.intergration.test.ts",
       "src/tests/integration/oauthIdentity.integration.test.ts",
       "src/tests/integration/sessionPersistence.integration.test.ts"

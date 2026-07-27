@@ -7,6 +7,7 @@ export declare const ACCESS_TOKEN_ALGORITHM: "ES256";
 export declare const LEGACY_TOKEN_ALGORITHM: "HS256";
 export declare const DEFAULT_TOKEN_ISSUER = "authenik8-core";
 export declare const DEFAULT_TOKEN_AUDIENCE = "authenik8-api";
+export declare const MINIMUM_HMAC_SECRET_BYTES = 32;
 export type Authenik8TokenUse = "access" | "guest" | "refresh" | "agent" | "agent-delegation";
 export interface Authenik8JwkConfig {
     keys: JWK[];
@@ -21,13 +22,14 @@ export interface JwtKeyRingOptions {
     audience?: string | string[];
 }
 export interface SignJwtOptions {
-    expiresIn: string | number;
+    expiresInSeconds: number;
     tokenUse: Authenik8TokenUse;
 }
 export interface PublicJwksVerificationOptions {
     issuer: string;
     audience: string | string[];
 }
+export declare const normalizeTokenLifetime: (value: string | number, label: string, minimumSeconds: number, maximumSeconds: number) => number;
 export declare class JwtKeyRing {
     readonly issuer: string;
     readonly audience: string | string[];
@@ -40,6 +42,7 @@ export declare class JwtKeyRing {
     private activePrivateJwk;
     private protectedHeader;
 }
+export declare const decodeBoundedJwt: <T extends JWTPayload = JWTPayload>(token: string) => Promise<T>;
 export declare const generateSigningJwk: (kid?: string) => Promise<JWK>;
 export declare const verifyAccessTokenWithJwks: <T extends JWTPayload = JWTPayload>(token: string, jwks: JSONWebKeySet | URL, options: PublicJwksVerificationOptions) => Promise<T>;
 export {};

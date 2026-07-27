@@ -1,3 +1,5 @@
+import type { AuditEmitter } from "../audit/types";
+import type { SessionRiskReporter } from "../risk/types";
 export declare class MissingTokenError extends Error {
     constructor(message?: string);
 }
@@ -27,6 +29,9 @@ export interface RefreshServiceOptions {
     audience: string | string[];
     rotateRefreshTokens?: boolean;
     refreshTokenExpiry?: string | number;
+    audit?: AuditEmitter;
+    risk?: SessionRiskReporter;
+    keyPrefix?: string;
 }
 export interface RefreshResult {
     accessToken: string;
@@ -36,11 +41,14 @@ export declare class RefreshService {
     private readonly tokenStore;
     private readonly accessTokenSigner;
     private readonly rotateRefreshTokens;
-    private readonly refreshTokenExpiry;
+    private readonly refreshTokenTtl;
     private readonly lock;
     private readonly sessionStore;
     private readonly refreshKeys;
     private readonly redisClient;
+    private readonly audit?;
+    private readonly risk?;
+    private readonly keyPrefix;
     constructor(options: RefreshServiceOptions);
     generateRefreshToken(payload: RefreshTokenPayload): Promise<string>;
     refresh(refreshToken?: string): Promise<RefreshResult>;
@@ -55,6 +63,9 @@ export declare class RefreshService {
     private refreshKey;
     private refreshFamilyIndexKey;
     private lockKey;
+    private scoped;
+    private principal;
+    private reportConcurrentRefresh;
 }
 export {};
 //# sourceMappingURL=refreshService.d.ts.map

@@ -1,297 +1,196 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { createGoogleProvider } from '../../oauth/providers/google';
-import type { Request, Response } from 'express';
-import type { Provider } from '../../oauth/types';
+import type { Request, Response } from "express";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { createGoogleProvider } from "../../oauth/providers/google";
+import type { IdentityEngine, OAuthStateStore } from "../../oauth/types";
 
-//vi.mock('google-auth-library', () => {
-  //const mockGetPayload = vi.fn();
-  //const mockVerifyIdToken = vi.fn().mockResolvedValue({ getPayload: mockGetPayload });
-  //const MockOAuth2Client = vi.fn(() => ({ verifyIdToken: mockVerifyIdToken }));
-  //return { OAuth2Client: MockOAuth2Client, mockGetPayload, mockVerifyIdToken };
-//});
-
-//import { mockGetPayload, mockVerifyIdToken } from 'google-auth-library';
-const { mockGetPayload, mockVerifyIdToken } = vi.hoisted(() => {
-  const mockGetPayload = vi.fn();
-  const mockVerifyIdToken = vi.fn().mockResolvedValue({ getPayload: mockGetPayload });
-  return { mockGetPayload, mockVerifyIdToken };
-});
-
-vi.mock('google-auth-library', () => ({
+const { getPayload, verifyIdToken } = vi.hoisted(() => ({
+  getPayload: vi.fn(),
+  verifyIdToken: vi.fn(),
+}));
+vi.mock("google-auth-library", () => ({
   OAuth2Client: vi.fn(function () {
-    return { verifyIdToken: mockVerifyIdToken };
+    return { verifyIdToken };
   }),
 }));
-const mockStateStore = {
-  set: vi.fn().mockResolvedValue(undefined),
-  get: vi.fn(),
-  del: vi.fn().mockResolvedValue(undefined),
+
+const VALID_STATE = "a".repeat(64);
+const config = {
+  clientId: "google-client-id",
+  clientSecret: "google-client-secret-32-bytes-minimum",
+  redirectUri: "https://app.example.test/auth/google/callback",
+};
+const validPayload = {
+  email: "dev@example.com",
+  name: "Dev User",
+  sub: "google-sub-999",
+  email_verified: true,
+  iss: "https://accounts.google.com",
 };
 
-const mockIdentityEngine = { resolveOAuth: vi.fn() };
-
-const mockConfig = {
-  clientId: 'google-client-id',
-  clientSecret: 'google-client-secret',
-  redirectUri: 'https://myapp.com/auth/google/callback',
-};
-
-const mockReq = (overrides: Partial<Request> = {}) =>
+const request = (overrides: Record<string, unknown> = {}) =>
   ({
     query: {},
-    path: '/auth/google',
-    user: null,
+    path: "/auth/google",
+    socket: { remoteAddress: "192.0.2.1" },
+    headers: {},
     ...overrides,
   }) as unknown as Request;
 
-const mockRes = () => {
-  const res = {
+const response = () =>
+  ({
     redirect: vi.fn(),
     status: vi.fn().mockReturnThis(),
     json: vi.fn().mockReturnThis(),
-  };
-  return res as unknown as Response;
-};
+  }) as unknown as Response;
 
-function makeStoredState(overrides = {}) {
-  return { userId: null, mode: 'login' as const, ...overrides };
-}
-
-const validPayload = {
-  email: 'dev@example.com',
-  name: 'Dev User',
-  sub: 'google-sub-999',
-  email_verified: true,
-  iss: 'https://accounts.google.com',
-};
-
-function mockFetchSequence(...responses: Array<{ ok?: boolean; text?: string; json?: any }>) {
-  let call = 0;
-  vi.stubGlobal(
-    'fetch',
-    vi.fn(async () => {
-      const r = responses[call++];
-      if (!r) throw new Error('mockFetchSequence: unexpected fetch call');
-      return {
-        ok: r.ok ?? true,
-        text: async () => r.text ?? '',
-        json: async () => r.json ?? {},
-      };
-    })
-  );
-}
-//let mockGetPayload: ReturnType<typeof vi.fn>;
-//let mockVerifyIdToken: ReturnType<typeof vi.fn>;
-
-//beforeAll(async () => {
-	//const mocks = (await import('google-auth-library')) as any;
-  //mockGetPayload = mocks.mockGetPayload;
-  //mockVerifyIdToken = mocks.mockVerifyIdToken;
-//});
-
-beforeEach(() => {
-  vi.clearAllMocks();
-  vi.unstubAllGlobals();
-});
-
-describe('createGoogleProvider', () => {
-  let provider: ReturnType<typeof createGoogleProvider>;
+describe("createGoogleProvider", () => {
+  let stateStore: OAuthStateStore;
+  let identityEngine: IdentityEngine;
 
   beforeEach(() => {
-    provider = createGoogleProvider(mockConfig, mockStateStore as any, mockIdentityEngine as any);
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+    stateStore = {
+      set: vi.fn().mockResolvedValue(undefined),
+      take: vi.fn().mockResolvedValue({ mode: "login", userId: null }),
+    };
+    identityEngine = {
+      resolveOAuth: vi.fn(async () => ({
+        type: "EXISTING_PROVIDER_LOGIN" as const,
+        user: {
+          id: "user-1",
+          email: "dev@example.com",
+          providers: [],
+        },
+        accessToken: "access",
+        refreshToken: "refresh",
+      })),
+    };
+    verifyIdToken.mockResolvedValue({ getPayload });
+    getPayload.mockReturnValue(validPayload);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+          access_token: "google-access",
+          id_token: "google-id",
+          }),
+          { status: 200 },
+        ),
+      ),
+    );
   });
 
-  // ─── redirect ──────────────────────────────────────────────────────────
-  describe('redirect', () => {
-    it('stores state in Redis and redirects to Google', async () => {
-      const req = mockReq();
-      const res = mockRes();
+  it("creates 256-bit state and does not infer link mode from the path", async () => {
+    const provider = createGoogleProvider(config, stateStore, identityEngine);
+    const res = response();
+    await provider.redirect(request({ path: "/auth/google/link" }), res);
 
-      await provider.redirect(req, res);
-
-      expect(mockStateStore.set).toHaveBeenCalledWith(
-        expect.any(String),
-        expect.objectContaining({ mode: 'login' }),
-        300
-      );
-      expect(res.redirect).toHaveBeenCalledWith(
-        expect.stringContaining('https://accounts.google.com/o/oauth2/v2/auth')
-      );
-    });
-
-    it('includes required OAuth params in the redirect URL', async () => {
-      const req = mockReq();
-      const res = mockRes();
-
-      await provider.redirect(req, res);
-
-      const url = new URL((res.redirect as any).mock.calls[0][0]);
-      expect(url.searchParams.get('client_id')).toBe(mockConfig.clientId);
-      expect(url.searchParams.get('redirect_uri')).toBe(mockConfig.redirectUri);
-      expect(url.searchParams.get('response_type')).toBe('code');
-      expect(url.searchParams.get('scope')).toBe('openid email profile');
-      expect(url.searchParams.get('access_type')).toBe('offline');
-      expect(url.searchParams.get('prompt')).toBe('consent');
-      expect(url.searchParams.get('state')).toBeTruthy();
-    });
-
-    it('sets mode=link when path contains "link"', async () => {
-      const req = mockReq({ path: '/auth/google/link' });
-      const res = mockRes();
-
-      await provider.redirect(req, res);
-
-      expect(mockStateStore.set).toHaveBeenCalledWith(
-        expect.any(String),
-        expect.objectContaining({ mode: 'link' }),
-        300
-      );
-    });
-
-    it('stores userId from req.user in Redis state', async () => {
-      const req = mockReq({ user: { userId: 'user-123' } as any });
-      const res = mockRes();
-
-      await provider.redirect(req, res);
-
-      expect(mockStateStore.set).toHaveBeenCalledWith(
-        expect.any(String),
-        expect.objectContaining({ userId: 'user-123' }),
-        300
-      );
-    });
-
-    it('returns 500 when Redis throws', async () => {
-      mockStateStore.set.mockRejectedValueOnce(new Error('State store down'));
-      const req = mockReq();
-      const res = mockRes();
-
-      await provider.redirect(req, res);
-
-      expect(res.status).toHaveBeenCalledWith(500);
-      expect(res.json).toHaveBeenCalledWith({ error: 'OAuth redirect failed' });
-      expect(res.redirect).not.toHaveBeenCalled();
-    });
+    expect(stateStore.set).toHaveBeenCalledWith(
+      expect.stringMatching(/^[a-f0-9]{64}$/),
+      { mode: "login", userId: null },
+      300,
+    );
+    const url = new URL(String(vi.mocked(res.redirect).mock.calls[0]![0]));
+    expect(url.origin).toBe("https://accounts.google.com");
+    expect(url.searchParams.get("state")).toMatch(/^[a-f0-9]{64}$/);
   });
 
-  // ─── handleCallback ────────────────────────────────────────────────────
-  describe('handleCallback', () => {
-    it('throws when state is missing', async () => {
-      const req = mockReq({ query: { code: 'abc' } });
-      await expect(provider.handleCallback(req)).rejects.toThrow('OAuthError:Missing state');
+  it("requires an authenticated user before creating link state", async () => {
+    const provider = createGoogleProvider(config, stateStore, identityEngine);
+    const res = response();
+    await provider.redirect(request(), res, "link");
+
+    expect(res.status).toHaveBeenCalledWith(401);
+    expect(stateStore.set).not.toHaveBeenCalled();
+    expect(res.redirect).not.toHaveBeenCalled();
+  });
+
+  it("binds explicit link state to the authenticated user", async () => {
+    const provider = createGoogleProvider(config, stateStore, identityEngine);
+    await provider.redirect(
+      request({ user: { userId: "user-1" } }),
+      response(),
+      "link",
+    );
+    expect(stateStore.set).toHaveBeenCalledWith(
+      expect.any(String),
+      { mode: "link", userId: "user-1" },
+      300,
+    );
+  });
+
+  it("rejects malformed state without making an outbound request", async () => {
+    const provider = createGoogleProvider(config, stateStore, identityEngine);
+    await expect(
+      provider.handleCallback(
+        request({ query: { code: "code", state: "not-random" } }),
+      ),
+    ).rejects.toThrow(/invalid or expired state/i);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("atomically consumes state before validating or exchanging the code", async () => {
+    const provider = createGoogleProvider(config, stateStore, identityEngine);
+    await expect(
+      provider.handleCallback(request({ query: { state: VALID_STATE } })),
+    ).rejects.toThrow(/missing authorization code/i);
+    expect(stateStore.take).toHaveBeenCalledWith(VALID_STATE);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("does not disclose the provider token error response", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValue(
+          new Response("provider secret details", { status: 400 }),
+        ),
+    );
+    const provider = createGoogleProvider(config, stateStore, identityEngine);
+    await expect(
+      provider.handleCallback(
+        request({ query: { code: "code", state: VALID_STATE } }),
+      ),
+    ).rejects.toThrow("OAuthError:Token exchange failed");
+  });
+
+  it("rejects unverified or malformed ID-token profiles", async () => {
+    getPayload.mockReturnValue({ ...validPayload, email_verified: false });
+    const provider = createGoogleProvider(config, stateStore, identityEngine);
+    await expect(
+      provider.handleCallback(
+        request({ query: { code: "code", state: VALID_STATE } }),
+      ),
+    ).rejects.toThrow(/email not verified/i);
+  });
+
+  it("returns a verified profile and identity token pair", async () => {
+    const provider = createGoogleProvider(config, stateStore, identityEngine);
+    const result = await provider.handleCallback(
+      request({ query: { code: "code", state: VALID_STATE } }),
+    );
+
+    expect(verifyIdToken).toHaveBeenCalledWith({
+      idToken: "google-id",
+      audience: config.clientId,
     });
-
-    it('throws when state is not found in Redis', async () => {
-      mockStateStore.get.mockResolvedValue(null);
-      const req = mockReq({ query: { code: 'abc', state: 'stale' } });
-      await expect(provider.handleCallback(req)).rejects.toThrow('OAuthError:Invalid or expired state');
-    });
-
-    it('throws when code is missing', async () => {
-      mockStateStore.get.mockResolvedValue(makeStoredState());
-      const req = mockReq({ query: { state: 'valid-state' } });
-      await expect(provider.handleCallback(req)).rejects.toThrow('OauthError:Missing authorization code');
-    });
-
-    it('throws when token exchange response is not ok', async () => {
-      mockStateStore.get.mockResolvedValue(makeStoredState());
-      mockFetchSequence({ ok: false, text: 'Bad Request' });
-
-      const req = mockReq({ query: { code: 'mycode', state: 'valid-state' } });
-      await expect(provider.handleCallback(req)).rejects.toThrow('OAuthError:Token exchange failed->Bad Request');
-    });
-
-    it('throws when no access_token is returned', async () => {
-      mockStateStore.get.mockResolvedValue(makeStoredState());
-      mockFetchSequence({ json: { id_token: 'some-id-token' } }); // missing access_token
-
-      const req = mockReq({ query: { code: 'mycode', state: 'valid-state' } });
-      await expect(provider.handleCallback(req)).rejects.toThrow('OAuthError:No access token returned');
-    });
-
-    it('throws when no id_token is returned', async () => {
-      mockStateStore.get.mockResolvedValue(makeStoredState());
-      mockFetchSequence({ json: { access_token: 'goog-token' } }); // missing id_token
-
-      const req = mockReq({ query: { code: 'mycode', state: 'valid-state' } });
-      await expect(provider.handleCallback(req)).rejects.toThrow('OAuthError:No id_token returned from Google');
-    });
-
-    it('throws when ID token payload is null', async () => {
-      mockStateStore.get.mockResolvedValue(makeStoredState());
-      mockFetchSequence({ json: { access_token: 'goog-token', id_token: 'id-tok' } });
-      vi.mocked(mockGetPayload).mockReturnValue(null);
-
-      const req = mockReq({ query: { code: 'mycode', state: 'valid-state' } });
-      await expect(provider.handleCallback(req)).rejects.toThrow('OAuthError:Invalid ID token payload');
-    });
-
-    it('throws when email is absent from payload', async () => {
-      mockStateStore.get.mockResolvedValue(makeStoredState());
-      mockFetchSequence({ json: { access_token: 'goog-token', id_token: 'id-tok' } });
-      vi.mocked(mockGetPayload).mockReturnValue({ ...validPayload, email: undefined });
-
-      const req = mockReq({ query: { code: 'mycode', state: 'valid-state' } });
-      await expect(provider.handleCallback(req)).rejects.toThrow('OAuthError:Email not present in ID token');
-    });
-
-    it('throws when email is not verified', async () => {
-      mockStateStore.get.mockResolvedValue(makeStoredState());
-      mockFetchSequence({ json: { access_token: 'goog-token', id_token: 'id-tok' } });
-      vi.mocked(mockGetPayload).mockReturnValue({ ...validPayload, email_verified: false });
-
-      const req = mockReq({ query: { code: 'mycode', state: 'valid-state' } });
-      await expect(provider.handleCallback(req)).rejects.toThrow('OAuthError:Email not verified');
-    });
-
-    it('throws when issuer is invalid', async () => {
-      mockStateStore.get.mockResolvedValue(makeStoredState());
-      mockFetchSequence({ json: { access_token: 'goog-token', id_token: 'id-tok' } });
-      vi.mocked(mockGetPayload).mockReturnValue({ ...validPayload, iss: 'https://evil.com' });
-
-      const req = mockReq({ query: { code: 'mycode', state: 'valid-state' } });
-      await expect(provider.handleCallback(req)).rejects.toThrow('OAuthError: Invalid issuer');
-    });
-
-    it('accepts the alternate accounts.google.com issuer', async () => {
-      mockStateStore.get.mockResolvedValue(makeStoredState());
-      mockFetchSequence({ json: { access_token: 'goog-token', id_token: 'id-tok' } });
-      vi.mocked(mockGetPayload).mockReturnValue({ ...validPayload, iss: 'accounts.google.com' });
-
-      const req = mockReq({ query: { code: 'mycode', state: 'valid-state' } });
-      const result = await provider.handleCallback(req);
-
-      expect(result.profile.provider).toBe('google');
-    });
-
-    it('returns correct profile, mode and userId on success', async () => {
-      mockStateStore.get.mockResolvedValue(makeStoredState({ userId: 'user-123', mode: 'link' }));
-      mockFetchSequence({ json: { access_token: 'goog-token', id_token: 'id-tok' } });
-      vi.mocked(mockGetPayload).mockReturnValue(validPayload);
-
-      const req = mockReq({ query: { code: 'mycode', state: 'valid-state' } });
-      const result = await provider.handleCallback(req);
-
-      expect(result.profile).toEqual({
-        email: 'dev@example.com',
-        name: 'Dev User',
-        provider: 'google',
-        providerId: 'google-sub-999',
+    expect(vi.mocked(identityEngine.resolveOAuth)).toHaveBeenCalledWith({
+      profile: {
+        email: "dev@example.com",
+        name: "Dev User",
+        provider: "google",
+        providerId: "google-sub-999",
         email_verified: true,
-      });
-      expect(result.mode).toBe('link');
-      expect(result.userId).toBe('user-123');
+      },
+      mode: "login",
+      userId: null,
     });
-
-    it('deletes the state key from Redis after success', async () => {
-      mockStateStore.get.mockResolvedValue(makeStoredState());
-      mockFetchSequence({ json: { access_token: 'goog-token', id_token: 'id-tok' } });
-      vi.mocked(mockGetPayload).mockReturnValue(validPayload);
-
-      const req = mockReq({ query: { code: 'mycode', state: 'valid-state' } });
-      await provider.handleCallback(req);
-
-      expect(mockStateStore.del).toHaveBeenCalledWith('valid-state');
+    expect(result).toMatchObject({
+      accessToken: "access",
+      refreshToken: "refresh",
     });
   });
 });

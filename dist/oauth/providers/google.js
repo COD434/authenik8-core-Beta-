@@ -7,19 +7,37 @@ exports.createGoogleProvider = createGoogleProvider;
 const google_auth_library_1 = require("google-auth-library");
 const crypto_1 = __importDefault(require("crypto"));
 const callback_1 = require("../callback");
-function createGoogleProvider(config, stateStore, identityEngine) {
-    const { clientId, clientSecret, redirectUri } = config;
+const state_1 = require("../state");
+const providerSecurity_1 = require("../providerSecurity");
+const safeString_1 = require("../../utility/safeString");
+const identityValidation_1 = require("../identityValidation");
+function createGoogleProvider(config, stateStore, identityEngine, audit) {
+    const providerConfig = Object.freeze({ ...config });
+    const { clientId } = providerConfig;
+    (0, providerSecurity_1.validateOAuthProviderConfig)(providerConfig);
     return {
-        redirect: async (req, res) => {
+        redirect: async (req, res, mode = "login") => {
             try {
-                const state = crypto_1.default.randomBytes(32).toString("hex");
-                const mode = req.path.includes("link") ? "link" : "login";
-                const authUser = req.user ?? null;
+                const state = crypto_1.default.randomBytes(state_1.OAUTH_STATE_BYTES).toString("hex");
+                const userId = (0, providerSecurity_1.authenticatedUserId)(req);
+                if (mode === "link" && !userId) {
+                    res.status(401).json({ error: "Authentication required for linking" });
+                    return;
+                }
                 await stateStore.set(state, {
-                    userId: authUser?.userId ?? null,
+                    userId: mode === "link" ? userId : null,
                     mode,
-                }, 300);
-                res.redirect(googleAuthorizationUrl(config, state));
+                }, state_1.OAUTH_STATE_TTL_SECONDS);
+                await audit?.emit({
+                    type: "oauth.state_created",
+                    severity: "info",
+                    outcome: "success",
+                    actor: userId
+                        ? { type: "user", id: userId }
+                        : { type: "unknown" },
+                    metadata: { provider: "google", mode },
+                });
+                res.redirect(googleAuthorizationUrl(providerConfig, state));
                 return;
             }
             catch {
@@ -28,13 +46,27 @@ function createGoogleProvider(config, stateStore, identityEngine) {
             }
         },
         handleCallback: async (req) => {
-            const code = req.query.code;
-            const state = req.query.state;
+            const code = (0, providerSecurity_1.readOAuthQueryValue)(req, "code");
+            const state = (0, providerSecurity_1.readOAuthQueryValue)(req, "state");
             if (!state) {
+                await audit?.emit({
+                    type: "oauth.state_rejected",
+                    severity: "warning",
+                    outcome: "denied",
+                    actor: { type: "unknown" },
+                    metadata: { provider: "google", reason: "missing" },
+                });
                 throw new Error("OAuthError:Missing state");
             }
-            const stored = await stateStore.get(state);
+            const stored = await (0, state_1.consumeOAuthState)(stateStore, state);
             if (!stored) {
+                await audit?.emit({
+                    type: "oauth.state_rejected",
+                    severity: "warning",
+                    outcome: "denied",
+                    actor: { type: "unknown" },
+                    metadata: { provider: "google", reason: "invalid_or_expired" },
+                });
                 throw new Error("OAuthError:Invalid or expired state");
             }
             const { userId, mode } = stored;
@@ -46,15 +78,23 @@ function createGoogleProvider(config, stateStore, identityEngine) {
                 headers: {
                     "Content-Type": "application/x-www-form-urlencoded",
                 },
-                body: googleTokenRequestBody(config, code),
+                body: googleTokenRequestBody(providerConfig, code),
+                signal: AbortSignal.timeout(providerSecurity_1.OAUTH_HTTP_TIMEOUT_MS),
             });
             if (!tokenRes.ok) {
-                const err = await tokenRes.text();
-                throw new Error(`OAuthError:Token exchange failed->${err}`);
+                throw new Error("OAuthError:Token exchange failed");
             }
-            const tokenData = (await tokenRes.json());
+            const tokenData = (await (0, providerSecurity_1.readBoundedJsonResponse)(tokenRes));
             const profile = await verifiedGoogleProfile(tokenData, clientId);
-            await stateStore.del(state);
+            await audit?.emit({
+                type: "oauth.state_consumed",
+                severity: "info",
+                outcome: "success",
+                actor: userId
+                    ? { type: "user", id: userId }
+                    : { type: "unknown" },
+                metadata: { provider: "google", mode },
+            });
             return (0, callback_1.finalizeOAuthCallback)(profile, mode, userId, identityEngine);
         },
     };
@@ -80,10 +120,16 @@ const googleTokenRequestBody = (config, code) => {
     return params;
 };
 const verifiedGoogleProfile = async (tokenData, clientId) => {
-    if (!tokenData.access_token) {
+    if (typeof tokenData.access_token !== "string" ||
+        tokenData.access_token.length === 0 ||
+        tokenData.access_token.length > 4096 ||
+        (0, safeString_1.containsControlCharacter)(tokenData.access_token)) {
         throw new Error("OAuthError:No access token returned");
     }
-    if (!tokenData.id_token) {
+    if (typeof tokenData.id_token !== "string" ||
+        tokenData.id_token.length === 0 ||
+        tokenData.id_token.length > 16 * 1024 ||
+        (0, safeString_1.containsControlCharacter)(tokenData.id_token)) {
         throw new Error("OAuthError:No id_token returned from Google");
     }
     const client = new google_auth_library_1.OAuth2Client(clientId);
@@ -95,22 +141,33 @@ const verifiedGoogleProfile = async (tokenData, clientId) => {
     if (!payload) {
         throw new Error("OAuthError:Invalid ID token payload");
     }
-    if (!payload.email) {
+    if (typeof payload.email !== "string" ||
+        payload.email.length === 0 ||
+        payload.email.length > 254 ||
+        (0, safeString_1.containsControlCharacter)(payload.email)) {
         throw new Error("OAuthError:Email not present in ID token");
     }
-    if (!payload.email_verified) {
+    if (payload.email_verified !== true) {
         throw new Error("OAuthError:Email not verified");
     }
     if (payload.iss !== "https://accounts.google.com" &&
         payload.iss !== "accounts.google.com") {
         throw new Error("OAuthError: Invalid issuer");
     }
+    if (typeof payload.sub !== "string" ||
+        payload.sub.length === 0 ||
+        payload.sub.length > 512 ||
+        (0, safeString_1.containsControlCharacter)(payload.sub)) {
+        throw new Error("OAuthError:Invalid subject in ID token");
+    }
     return {
-        email: payload.email,
-        name: payload.name,
+        email: (0, identityValidation_1.normalizeIdentityEmail)(payload.email),
+        ...(typeof payload.name === "string"
+            ? { name: payload.name.slice(0, 512) }
+            : {}),
         provider: "google",
         providerId: payload.sub,
-        email_verified: payload.email_verified ?? false,
+        email_verified: true,
     };
 };
 //# sourceMappingURL=google.js.map

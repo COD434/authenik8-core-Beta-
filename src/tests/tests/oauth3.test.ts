@@ -13,11 +13,10 @@ app.use(express.json());
 // TOKEN SERVICE (TEST)
 // =========================
 const tokenService = {
-  signAccessToken: (payload: any) =>
-    `test_access_${payload.userId}`,
-
-  generateRefreshToken: async (payload: any) =>
-    `test_refresh_${payload.userId}`,
+  issueTokens: async (payload: any) => ({
+    accessToken: `test_access_${payload.userId}`,
+    refreshToken: `test_refresh_${payload.userId}`,
+  }),
 };
 
 const identityEngine = createIdentityEngine(memoryAdapter, tokenService);
@@ -39,8 +38,8 @@ function getUserFromHeader(req: any) {
 // =========================
 async function start() {
   const auth = await createAuthenik8({
-    jwtSecret: "test",
-    refreshSecret: "test",
+    jwtSecret: "test-secret-32-bytes-minimum-value",
+    refreshSecret: "refresh-secret-32-bytes-minimum-value",
     oauth: {
       google: {
         clientId: process.env.GOOGLE_CLIENT_ID!,

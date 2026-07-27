@@ -20,6 +20,7 @@ describe('createOAuth', () => {
     setex: vi.fn(),
     get: vi.fn(),
     del: vi.fn(),
+    getdel: vi.fn(),
   };
   const mockIdentityEngine = {} as any;
 
@@ -46,7 +47,8 @@ describe('createOAuth', () => {
         get: expect.any(Function),
         del: expect.any(Function),
       }),
-      mockIdentityEngine
+      mockIdentityEngine,
+      undefined,
     );
     expect(mockCreateGitHubProvider).toHaveBeenCalledExactlyOnceWith(
       mockGitHubConfig,
@@ -55,7 +57,8 @@ describe('createOAuth', () => {
         get: expect.any(Function),
         del: expect.any(Function),
       }),
-      mockIdentityEngine
+      mockIdentityEngine,
+      undefined,
     );
 
     expect(oauth).toEqual({
@@ -111,17 +114,69 @@ describe('createOAuth', () => {
   it('adapts Redis commands behind the OAuth state-store contract', async () => {
     mockRedisClient.get.mockResolvedValueOnce(JSON.stringify({ userId: 'u1', mode: 'link' }));
     const stateStore = createRedisOAuthStateStore(mockRedisClient);
+    const stateToken = "a".repeat(64);
 
-    await stateStore.set('state-1', { userId: 'u1', mode: 'link' }, 300);
-    const state = await stateStore.get('state-1');
-    await stateStore.del('state-1');
+    await stateStore.set(stateToken, { userId: 'u1', mode: 'link' }, 300);
+    const state = await stateStore.get!(stateToken);
+    await stateStore.del!(stateToken);
 
     expect(mockRedisClient.setex).toHaveBeenCalledWith(
-      'oauth:state:state-1',
+      `oauth:state:${stateToken}`,
       300,
       JSON.stringify({ userId: 'u1', mode: 'link' })
     );
     expect(state).toEqual({ userId: 'u1', mode: 'link' });
-    expect(mockRedisClient.del).toHaveBeenCalledWith('oauth:state:state-1');
+    expect(mockRedisClient.del).toHaveBeenCalledWith(`oauth:state:${stateToken}`);
+  });
+
+  it('consumes a state value exactly once through atomic GETDEL', async () => {
+    const stateToken = "b".repeat(64);
+    mockRedisClient.getdel
+      .mockResolvedValueOnce(JSON.stringify({ userId: null, mode: "login" }))
+      .mockResolvedValueOnce(null);
+    const stateStore = createRedisOAuthStateStore(mockRedisClient);
+
+    const [first, replay] = await Promise.all([
+      stateStore.take(stateToken),
+      stateStore.take(stateToken),
+    ]);
+
+    expect(first).toEqual({ userId: null, mode: "login" });
+    expect(replay).toBeNull();
+    expect(mockRedisClient.get).not.toHaveBeenCalled();
+    expect(mockRedisClient.del).not.toHaveBeenCalled();
+  });
+
+  it("rejects oversized, extended, and control-character state records", async () => {
+    const stateToken = "c".repeat(64);
+    const stateStore = createRedisOAuthStateStore(mockRedisClient);
+
+    mockRedisClient.getdel.mockResolvedValueOnce(
+      JSON.stringify({
+        userId: null,
+        mode: "login",
+        injected: "not part of the state contract",
+      }),
+    );
+    await expect(stateStore.take(stateToken)).resolves.toBeNull();
+
+    mockRedisClient.getdel.mockResolvedValueOnce(
+      JSON.stringify({ userId: "user\nadmin", mode: "link" }),
+    );
+    await expect(stateStore.take(stateToken)).resolves.toBeNull();
+
+    mockRedisClient.getdel.mockResolvedValueOnce(`"${"x".repeat(2048)}"`);
+    await expect(stateStore.take(stateToken)).resolves.toBeNull();
+  });
+
+  it('rejects custom state stores that do not provide atomic take', () => {
+    expect(() =>
+      createOAuth({
+        google: mockGoogleConfig,
+        stateStore: {
+          set: vi.fn(),
+        } as any,
+      }),
+    ).toThrow(/atomic take/);
   });
 });

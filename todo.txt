@@ -1,0 +1,22 @@
+ codex resume 019f43ba-c7d3-7033-92da-c0b5aacfbc05
+
+
+
+  2. [x] Authorization layer
+      - [x] requireRole(...)
+      - [x] requirePermission(...)
+      - [x] requireScope(...)
+      - [x] tenant-aware checks
+
+  3. [x] Audit events
+     The core SDK owns a versioned structured event model and configurable
+     best-effort/strict dispatch. Applications own console/file/webhook sinks.
+
+  4. [x] Risk controls
+      - [x] refresh replay detection
+      - [x] concurrent refresh abuse thresholds
+      - [x] configurable IP/device change policy
+      - [x] suspicious agent activity thresholds
+      - [x] automatic session quarantine and release
+
+  

@@ -1,188 +1,210 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { Redis } from 'ioredis';
-import { createRedisIdentityAdapter } from '../../oauth/adapters/redisAdapter';
-const mockLockInstance = {
-  acquire: vi.fn(),
-  release: vi.fn(),
-};
+import { createHash } from "crypto";
+import RedisMock from "ioredis-mock";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { createRedisIdentityAdapter } from "../../oauth/adapters/redisAdapter";
 
-vi.mock('../../utility/lockHelper', () => ({
-  RedisLock: vi.fn(function () {
-    return mockLockInstance;
-  }),
-}));
+const digest = (value: string): string =>
+  createHash("sha256").update(value).digest("base64url");
 
-const mockMultiInstance = {
-  set: vi.fn().mockReturnThis(),
-  exec: vi.fn().mockResolvedValue([['OK'], ['OK'], ['OK']]),
-};
-
-const mockRedis = {
-  get: vi.fn(),
-  set: vi.fn().mockResolvedValue('OK'),
-  eval: vi.fn().mockResolvedValue(1),
-  multi: vi.fn(() => mockMultiInstance),
-} as any;
-
-describe('createRedisIdentityAdapter', () => {
-  let adapter: ReturnType<typeof createRedisIdentityAdapter>;
-
-  const mockEmail = 'test@example.com';
-  const mockProvider = 'google';
-  const mockProviderId = 'google-123';
-  const mockUserId = 'user-uuid-123';
-  const mockUser = {
-    id: mockUserId,
-    email: mockEmail.toLowerCase(),
-    providers: [{ provider: mockProvider, providerId: mockProviderId }],
-  };
+describe("createRedisIdentityAdapter", () => {
+  let redis: InstanceType<typeof RedisMock>;
 
   beforeEach(() => {
-    vi.clearAllMocks();
-    adapter = createRedisIdentityAdapter(mockRedis as Redis);
-
-    // Default successful lock
-    mockLockInstance.acquire.mockResolvedValue('lock-value-xyz');
-    mockLockInstance.release.mockResolvedValue(undefined);
+    redis = new RedisMock();
+  });
+  afterEach(async () => {
+    await redis.flushall();
+    redis.disconnect();
   });
 
-  describe('findUserByEmail', () => {
-    it('returns null when user does not exist', async () => {
-      mockRedis.get.mockResolvedValue(null);
-      const user = await adapter.findUserByEmail(mockEmail);
-      expect(user).toBeNull();
+  it("atomically creates and resolves every identity index", async () => {
+    const adapter = createRedisIdentityAdapter(redis as never, "test:oauth:v1");
+    const created = await adapter.createUser({
+      email: " Person@Example.COM ",
+      provider: "google",
+      providerId: "google:123",
     });
 
-    it('returns the user when found', async () => {
-      mockRedis.get.mockResolvedValueOnce(mockUserId); // email key
-      mockRedis.get.mockResolvedValueOnce(JSON.stringify(mockUser)); // user key
-
-      const user = await adapter.findUserByEmail(mockEmail);                                               expect(user).toEqual(mockUser);                                                                    });
+    expect(created.status).toBe("created");
+    expect(created.user.email).toBe("person@example.com");
+    await expect(adapter.findUserById(created.user.id)).resolves.toEqual(
+      created.user,
+    );
+    await expect(
+      adapter.findUserByEmail("PERSON@example.com"),
+    ).resolves.toEqual(created.user);
+    await expect(
+      adapter.findUserByProvider("google", "google:123"),
+    ).resolves.toEqual(created.user);
   });
 
-  describe('findUserByProvider', () => {
-    it('returns null when no matching provider', async () => {
-      mockRedis.get.mockResolvedValue(null);
-      const user = await adapter.findUserByProvider(mockProvider, mockProviderId);
-      expect(user).toBeNull();
-    });
+  it("classifies a concurrent same-email race and creates one account", async () => {
+    const adapterA = createRedisIdentityAdapter(redis as never, "test:oauth:v1");
+    const adapterB = createRedisIdentityAdapter(redis as never, "test:oauth:v1");
 
-    it('returns the user when provider is linked', async () => {
-      mockRedis.get.mockResolvedValueOnce(mockUserId); // provider key
-      mockRedis.get.mockResolvedValueOnce(JSON.stringify(mockUser));
-                                                                                                           const user = await adapter.findUserByProvider(mockProvider, mockProviderId);
-      expect(user).toEqual(mockUser);
-    });                                                                                                });
+    const results = await Promise.all([
+      adapterA.createUser({
+        email: "victim@example.com",
+        provider: "google",
+        providerId: "google-1",
+      }),
+      adapterB.createUser({
+        email: "victim@example.com",
+        provider: "github",
+        providerId: "github-1",
+      }),
+    ]);
 
-  describe('createUser', () => {
-    it('throws if email lock cannot be acquired', async () => {
-      mockLockInstance.acquire.mockResolvedValueOnce(null); // email lock fails
-
-      await expect(
-        adapter.createUser({ email: mockEmail, provider: mockProvider, providerId: mockProviderId })
-      ).rejects.toThrow('Unable to acquire OAuth email lock');
-    });
-
-    it('throws if provider lock cannot be acquired (and releases email lock)', async () => {
-      mockLockInstance.acquire.mockResolvedValueOnce('email-lock');
-      mockLockInstance.acquire.mockResolvedValueOnce(null); // provider lock fails
-
-      await expect(                                                                                          adapter.createUser({ email: mockEmail, provider: mockProvider, providerId: mockProviderId })
-      ).rejects.toThrow('Unable to acquire OAuth provider lock');
-
-      expect(mockLockInstance.release).toHaveBeenCalledWith(
-        expect.stringContaining(':lock:email:'),
-        'email-lock'
-      );
-    });
-
-    it('returns existing user if already registered by email', async () => {
-      mockRedis.get.mockResolvedValueOnce(mockUserId); // email key exiss
-      mockRedis.get.mockResolvedValueOnce(JSON.stringify(mockUser))
-
-      const user = await adapter.createUser({
-        email: mockEmail,
-        provider: mockProvider,
-        providerId: mockProviderId,
-      });
-
-      expect(user).toEqual(mockUser);
-      expect(mockRedis.multi).not.toHaveBeenCalled(); // no new write
-    });
-
-    it('returns existing user if already registered by provider', async () => {
-      mockRedis.get.mockResolvedValueOnce(null); // email not found
-      mockRedis.get.mockResolvedValueOnce(mockUserId); // provider key exists
-      mockRedis.get.mockResolvedValueOnce(JSON.stringify(mockUser));
-
-      const user = await adapter.createUser({
-        email: mockEmail,
-        provider: mockProvider,
-        providerId: mockProviderId,
-      });
-
-      expect(user).toEqual(mockUser);                                                                    });
-
-    it('creates a brand new user with Redis multi transaction', async () => {
-      // no existing user
-      mockRedis.get.mockResolvedValue(null);
-
-      const user = await adapter.createUser({
-        email: mockEmail,
-        provider: mockProvider,                                                                              providerId: mockProviderId,
-      });
-
-      expect(user.id).toBeDefined();
-      expect(user.email).toBe(mockEmail.toLowerCase());
-      expect(user.providers).toHaveLength(1);
-
-      expect(mockRedis.multi).toHaveBeenCalled();
-      expect(mockMultiInstance.set).toHaveBeenCalledTimes(3); 
-      expect(mockLockInstance.release).toHaveBeenCalledTimes(2);
-    });
+    expect(results.map((result) => result.status).sort()).toEqual([
+      "created",
+      "existing-email",
+    ]);
+    expect(results[0].user.id).toBe(results[1].user.id);
+    expect((await redis.keys("test:oauth:v1:{identity}:user:*"))).toHaveLength(1);
   });
 
-  describe('linkProvider', () => {
-    it('throws if provider lock cannot be acquired', async () => {
-      mockLockInstance.acquire.mockResolvedValue(null);
+  it("classifies a concurrent exact-provider race as safe provider ownership", async () => {
+    const adapter = createRedisIdentityAdapter(redis as never, "test:oauth:v1");
+    const [first, second] = await Promise.all([
+      adapter.createUser({
+        email: "one@example.com",
+        provider: "google",
+        providerId: "same-provider",
+      }),
+      adapter.createUser({
+        email: "two@example.com",
+        provider: "google",
+        providerId: "same-provider",
+      }),
+    ]);
 
-      await expect(
-        adapter.linkProvider(mockUserId, mockProvider, 'new-id')
-      ).rejects.toThrow('Unable to acquire OAuth provider lock');
-    });
+    expect([first.status, second.status].sort()).toEqual([
+      "created",
+      "existing-provider",
+    ]);
+    expect(first.user.id).toBe(second.user.id);
+  });
 
-    it('throws if provider is already linked to another user', async () => {
-      mockLockInstance.acquire.mockResolvedValue('provider-lock');
-      mockRedis.get.mockResolvedValueOnce('different-user-id'); 
+  it("preserves concurrent provider links without lost updates", async () => {
+    const adapter = createRedisIdentityAdapter(redis as never, "test:oauth:v1");
+    const user = (
+      await adapter.createUser({
+        email: "one@example.com",
+        provider: "google",
+        providerId: "google-1",
+      })
+    ).user;
 
-      await expect(
-        adapter.linkProvider(mockUserId, mockProvider, mockProviderId)
-      ).rejects.toThrow('Provider already linked to another user');
-    });
+    await Promise.all([
+      adapter.linkProvider(user.id, "github", "github-1"),
+      adapter.linkProvider(user.id, "github", "github-2"),
+    ]);
 
-    it('throws if user does not exist', async () => {
-      mockLockInstance.acquire.mockResolvedValue('provider-lock');
-      mockRedis.get.mockResolvedValueOnce(null); 
-      mockRedis.get.mockResolvedValueOnce(null); 
+    const linked = await adapter.findUserById(user.id);
+    expect(linked?.providers).toEqual(
+      expect.arrayContaining([
+        { provider: "google", providerId: "google-1" },
+        { provider: "github", providerId: "github-1" },
+        { provider: "github", providerId: "github-2" },
+      ]),
+    );
+  });
 
-      await expect(
-        adapter.linkProvider(mockUserId, mockProvider, mockProviderId)
-      ).rejects.toThrow(`User not found: ${mockUserId}`);
-    });
+  it("rejects linking a provider to a second account", async () => {
+    const adapter = createRedisIdentityAdapter(redis as never, "test:oauth:v1");
+    const first = (
+      await adapter.createUser({
+        email: "one@example.com",
+        provider: "google",
+        providerId: "google-1",
+      })
+    ).user;
+    const second = (
+      await adapter.createUser({
+        email: "two@example.com",
+        provider: "github",
+        providerId: "github-2",
+      })
+    ).user;
 
-    it('adds new provider (or ignores duplicate) and updates Redis', async () => {
-      mockLockInstance.acquire.mockResolvedValue('provider-lock');
-      mockRedis.get.mockResolvedValueOnce(null); 
-      mockRedis.get.mockResolvedValueOnce(JSON.stringify(mockUser)); 
+    await expect(
+      adapter.linkProvider(second.id, "google", "google-1"),
+    ).rejects.toThrow(/already linked/i);
+    expect(
+      (await adapter.findUserById(first.id))?.providers,
+    ).toHaveLength(1);
+  });
 
-      await adapter.linkProvider(mockUserId, 'github', 'github-999');
+  it("rejects malformed identity records from the security-critical store", async () => {
+    const adapter = createRedisIdentityAdapter(redis as never, "test:oauth:v1");
+    const user = (
+      await adapter.createUser({
+        email: "one@example.com",
+        provider: "google",
+        providerId: "google-1",
+      })
+    ).user;
+    const [userKey] = await redis.keys("test:oauth:v1:{identity}:user:*");
+    await redis.set(
+      userKey!,
+      JSON.stringify({ ...user, id: "forged\nidentity" }),
+    );
 
-      expect(mockRedis.multi).toHaveBeenCalled();
-      expect(mockMultiInstance.set).toHaveBeenCalledTimes(3);
-      expect(mockLockInstance.release).toHaveBeenCalledWith(
-        expect.stringContaining(':lock:provider:'),
-        'provider-lock'
-      );
-    });
+    await expect(adapter.findUserById(user.id)).rejects.toThrow(
+      /invalid user record/i,
+    );
+  });
+
+  it("bounds provider links per stored identity", async () => {
+    const adapter = createRedisIdentityAdapter(redis as never, "test:oauth:v1");
+    const user = (
+      await adapter.createUser({
+        email: "one@example.com",
+        provider: "google",
+        providerId: "google-1",
+      })
+    ).user;
+    for (let index = 1; index < 32; index += 1) {
+      await adapter.linkProvider(user.id, "github", `github-${index}`);
+    }
+
+    await expect(
+      adapter.linkProvider(user.id, "github", "github-overflow"),
+    ).rejects.toThrow(/provider limit/i);
+  });
+
+  it("cross-checks email and provider indexes against the resolved user", async () => {
+    const prefix = "test:oauth:v1";
+    const adapter = createRedisIdentityAdapter(redis as never, prefix);
+    const first = (
+      await adapter.createUser({
+        email: "one@example.com",
+        provider: "google",
+        providerId: "google-1",
+      })
+    ).user;
+    const second = (
+      await adapter.createUser({
+        email: "two@example.com",
+        provider: "github",
+        providerId: "github-2",
+      })
+    ).user;
+
+    await redis.set(
+      `${prefix}:{identity}:email:${digest(first.email)}`,
+      second.id,
+    );
+    await expect(adapter.findUserByEmail(first.email)).rejects.toThrow(
+      /email index integrity/i,
+    );
+
+    await redis.set(
+      `${prefix}:{identity}:provider:${digest("google\0google-1")}`,
+      second.id,
+    );
+    await expect(
+      adapter.findUserByProvider("google", "google-1"),
+    ).rejects.toThrow(/provider index integrity/i);
   });
 });

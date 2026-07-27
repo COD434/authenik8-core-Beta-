@@ -6,8 +6,10 @@ import { createIdentityEngine } from "../../oauth/brain/identityEngine";
 import { memoryAdapter } from "../../oauth/adapters/memoryAdapter";
 
 const tokenService = {
-  signAccessToken: () => "test_access_token",
-  generateRefreshToken: async () => "test_refresh_token",
+  issueTokens: async () => ({
+    accessToken: "test_access_token",
+    refreshToken: "test_refresh_token",
+  }),
 };
 const identityEngine = createIdentityEngine(memoryAdapter,tokenService);
 
@@ -25,8 +27,8 @@ declare global {
 
 async function start() {
   const auth = await createAuthenik8({
-    jwtSecret: "test",
-    refreshSecret: "test",
+    jwtSecret: "test-secret-32-bytes-minimum-value",
+    refreshSecret: "refresh-secret-32-bytes-minimum-value",
     oauth: {
       google: {
         clientId: process.env.GOOGLE_CLIENT_ID!,

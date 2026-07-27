@@ -1,306 +1,240 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { SecurityModule } from '../../security/ipService';
-import type { Request, Response, NextFunction } from 'express';
+import type { NextFunction, Request, Response } from "express";
+import RedisMock from "ioredis-mock";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { SecurityModule } from "../../security/ipService";
 
-
-vi.mock('ioredis', () => {
-  const Redis = vi.fn(function () {
-    return mockRedis;
-  });
-  return { default: Redis };
-});
-
-vi.mock('rate-limiter-flexible', () => ({
+const { consume } = vi.hoisted(() => ({ consume: vi.fn() }));
+vi.mock("rate-limiter-flexible", () => ({
   RateLimiterRedis: vi.fn(function () {
-    return mockRateLimiter;
+    return { consume };
   }),
 }));
 
-vi.mock('ip-address', async(importOriginal) => {
-return  await importOriginal();    
-})
-
-const mockRateLimiter = {
-  consume: vi.fn(),
-};
-
-const mockRedis = {
-  on: vi.fn(),
-  sadd: vi.fn().mockResolvedValue(1),
-  srem: vi.fn().mockResolvedValue(1),
-  sismember: vi.fn().mockResolvedValue(0),
-  smembers: vi.fn().mockResolvedValue([]),
-  set: vi.fn().mockResolvedValue('OK'),
-  del: vi.fn().mockResolvedValue(1),
-  exists: vi.fn().mockResolvedValue(1),
-};
-
-const mockReq = (overrides: Partial<Request> = {}) =>
+const request = (
+  remoteAddress: string,
+  forwarded?: string,
+): Request =>
   ({
-    ip: '1.2.3.4',
-    socket: { remoteAddress: '1.2.3.4' },
-    headers: {},
-    ...overrides,
+    socket: { remoteAddress },
+    headers: forwarded ? { "x-forwarded-for": forwarded } : {},
   }) as unknown as Request;
 
-const mockRes = () => {
-  const res = {
+const response = () =>
+  ({
     status: vi.fn().mockReturnThis(),
     json: vi.fn().mockReturnThis(),
     send: vi.fn().mockReturnThis(),
-  };
-  return res as unknown as Response;
-};
+  }) as unknown as Response;
 
-const next: NextFunction = vi.fn();
+describe("SecurityModule", () => {
+  let redis: InstanceType<typeof RedisMock>;
+  let security: SecurityModule;
 
-beforeEach(() => {
-  vi.clearAllMocks();
-  mockRedis.sismember.mockResolvedValue(0);
-  mockRedis.smembers.mockResolvedValue([]);
-  mockRedis.exists.mockResolvedValue(1);
-});
-
-
-describe('isAllowed', () => {
-  it('returns true immediately when whitelist is disabled', async () => {
-    const module = new SecurityModule({
-      redisClient: mockRedis as any,
-      whiteListEnabled: false,
+  beforeEach(() => {
+    redis = new RedisMock();
+    consume.mockReset();
+    consume.mockResolvedValue(undefined);
+    security = new SecurityModule({
+      redisClient: redis as never,
+      rateLimiterEnabled: false,
+      keyPrefix: "test:security",
     });
-
-    const result = await module.isAllowed('9.9.9.9');
-    expect(result).toBe(true);
-    expect(mockRedis.sismember).not.toHaveBeenCalled();
+  });
+  afterEach(async () => {
+    await redis.flushall();
+    redis.disconnect();
   });
 
-  it('returns true when IP is in the Redis set', async () => {
-    mockRedis.sismember.mockResolvedValue(1);
-    const module = new SecurityModule({ redisClient: mockRedis as any });
+  it("enforces exact allowlist TTL atomically", async () => {
+    await security.addIP("203.0.113.10", 60);
+    await expect(security.isAllowed("203.0.113.10")).resolves.toBe(true);
 
-    expect(await module.isAllowed('5.5.5.5')).toBe(true);
+    const marker = (await redis.keys("test:security:{allowlist}:entry:*"))[0]!;
+    await redis.del(marker);
+    await expect(security.isAllowed("203.0.113.10")).resolves.toBe(false);
+    await expect(
+      redis.smembers("test:security:{allowlist}:exact"),
+    ).resolves.toEqual([]);
   });
 
-  it('returns true for localhost ::1', async () => {
-    const module = new SecurityModule({ redisClient: mockRedis as any });
-    expect(await module.isAllowed('::1')).toBe(true);
+  it("does not implicitly trust IPv4 or IPv6 loopback", async () => {
+    await expect(security.isAllowed("127.0.0.1")).resolves.toBe(false);
+    await expect(security.isAllowed("::1")).resolves.toBe(false);
+    await security.addIP("::1");
+    await expect(security.isAllowed("::1")).resolves.toBe(true);
   });
 
-  it('returns true for localhost 127.0.0.1', async () => {
-    const module = new SecurityModule({ redisClient: mockRedis as any });
-    expect(await module.isAllowed('127.0.0.1')).toBe(true);
+  it("canonicalizes and matches IPv4 and IPv6 CIDRs", async () => {
+    await security.addIP("10.42.7.9/8");
+    await security.addIP("2001:db8:1::9/64");
+
+    await expect(security.isAllowed("10.99.1.2")).resolves.toBe(true);
+    await expect(security.isAllowed("2001:db8:1::abcd")).resolves.toBe(true);
+    await expect(security.isAllowed("2001:db8:2::1")).resolves.toBe(false);
+    await expect(security.listIPs()).resolves.toEqual([
+      "10.0.0.0/8",
+      "2001:db8:1::/64",
+    ]);
   });
 
-  it('returns true for IP matching a CIDR entry', async () => {
-    mockRedis.smembers.mockResolvedValue(['10.0.0.0/8']);
-    mockRedis.exists.mockResolvedValue(1);
-    const module = new SecurityModule({ redisClient: mockRedis as any });
-
-    expect(await module.isAllowed('10.1.2.3')).toBe(true);
+  it("rejects malformed entries and unsafe TTLs", async () => {
+    await expect(security.addIP("not-an-ip")).rejects.toThrow(/invalid/i);
+    await expect(security.addIP("10.0.0.1", 0)).rejects.toThrow(/TTL/i);
+    await expect(security.isAllowed("not-an-ip")).resolves.toBe(false);
   });
 
-  it('returns false for IP not in whitelist or CIDR', async () => {
-    mockRedis.smembers.mockResolvedValue([]);
-    const module = new SecurityModule({ redisClient: mockRedis as any });
+  it("ignores forwarded headers when no proxy network is trusted", async () => {
+    await security.addIP("203.0.113.10");
+    const res = response();
+    const next: NextFunction = vi.fn();
 
-    expect(await module.isAllowed('8.8.8.8')).toBe(false);
-  });
-
-  it('returns false when Redis throws', async () => {
-    mockRedis.sismember.mockRejectedValue(new Error('Redis down'));
-    const module = new SecurityModule({ redisClient: mockRedis as any });
-
-    expect(await module.isAllowed('1.2.3.4')).toBe(false);
-  });
-});
-
-
-describe('addIP', () => {
-  it('calls sadd and set with the correct keys', async () => {
-    const module = new SecurityModule({ redisClient: mockRedis as any });
-    await module.addIP('5.5.5.5');
-
-    expect(mockRedis.sadd).toHaveBeenCalledWith('whitelist:ips', '5.5.5.5');
-    expect(mockRedis.set).toHaveBeenCalledWith(
-      expect.stringContaining('whitelist:ips:entry:'),
-      '1',
-      'EX',
-      604800 // 7 days
+    await security.whiteListMiddleware()(
+      request("198.51.100.20", "203.0.113.10"),
+      res,
+      next,
     );
-  });
-
-  it('accepts a custom TTL', async () => {
-    const module = new SecurityModule({ redisClient: mockRedis as any });
-    await module.addIP('5.5.5.5', 3600);
-
-    expect(mockRedis.set).toHaveBeenCalledWith(
-      expect.any(String),
-      '1',
-      'EX',
-      3600
-    );
-  });
-});
-
-
-describe('removeIP', () => {
-  it('calls srem and del with the correct keys', async () => {
-    const module = new SecurityModule({ redisClient: mockRedis as any });
-    await module.removeIP('5.5.5.5');
-
-    expect(mockRedis.srem).toHaveBeenCalledWith('whitelist:ips', '5.5.5.5');
-    expect(mockRedis.del).toHaveBeenCalledWith(
-      expect.stringContaining('whitelist:ips:entry:')
-    );
-  });
-});
-
-
-describe('listIPs', () => {
-  it('returns only entries whose TTL key still exists', async () => {
-    mockRedis.smembers.mockResolvedValue(['1.1.1.1', '2.2.2.2']);
-    mockRedis.exists
-      .mockResolvedValueOnce(1) // 1.1.1.1 active
-      .mockResolvedValueOnce(0); // 2.2.2.2 expired
-
-    const module = new SecurityModule({ redisClient: mockRedis as any });
-    const result = await module.listIPs();
-
-    expect(result).toEqual(['1.1.1.1']);
-    expect(mockRedis.srem).toHaveBeenCalledWith('whitelist:ips', '2.2.2.2');
-  });
-
-  it('returns empty array when no IPs are stored', async () => {
-    mockRedis.smembers.mockResolvedValue([]);
-    const module = new SecurityModule({ redisClient: mockRedis as any });
-
-    expect(await module.listIPs()).toEqual([]);
-  });
-});
-
-
-describe('whiteListMiddleware', () => {
-  it('calls next() immediately when whitelist is disabled', async () => {
-    const module = new SecurityModule({
-      redisClient: mockRedis as any,
-      whiteListEnabled: false,
-    });
-    const middleware = module.whiteListMiddleware();
-    await middleware(mockReq(), mockRes(), next);
-
-    expect(next).toHaveBeenCalled();
-  });
-
-  it('calls next() when IP is allowed', async () => {
-    mockRedis.sismember.mockResolvedValue(1);
-    const module = new SecurityModule({ redisClient: mockRedis as any });
-    const middleware = module.whiteListMiddleware();
-    await middleware(mockReq({ ip: '5.5.5.5' }), mockRes(), next);
-
-    expect(next).toHaveBeenCalled();
-  });
-
-  it('returns 403 when IP is not allowed', async () => {
-    mockRedis.sismember.mockResolvedValue(0);
-    mockRedis.smembers.mockResolvedValue([]);
-    const module = new SecurityModule({ redisClient: mockRedis as any });
-    const res = mockRes();
-    const middleware = module.whiteListMiddleware();
-    await middleware(mockReq({ ip: '9.9.9.9' }), res, next);
-
+    expect(next).not.toHaveBeenCalled();
     expect(res.status).toHaveBeenCalledWith(403);
-    expect(res.json).toHaveBeenCalledWith({ error: 'Access denied' });
-    expect(next).not.toHaveBeenCalled();
   });
 
-  it('uses x-forwarded-for when trustProxyHeaders is true', async () => {
-    mockRedis.sismember.mockResolvedValue(1);
-    const module = new SecurityModule({
-      redisClient: mockRedis as any,
-      trustProxyHeaders: true,
+  it("walks a trusted proxy chain from the socket inward", async () => {
+    security = new SecurityModule({
+      redisClient: redis as never,
+      rateLimiterEnabled: false,
+      keyPrefix: "test:security",
+      trustedProxyCidrs: ["10.0.0.0/8"],
     });
-    const req = mockReq({
-      headers: { 'x-forwarded-for': '203.0.113.5, 10.0.0.1' },
-    });
-    const middleware = module.whiteListMiddleware();
-    await middleware(req, mockRes(), next);
+    await security.addIP("203.0.113.10");
+    const next: NextFunction = vi.fn();
 
-    expect(mockRedis.sismember).toHaveBeenCalledWith(
-      'whitelist:ips',
-      '203.0.113.5'
+    await security.whiteListMiddleware()(
+      request("10.0.0.2", "203.0.113.10, 10.0.0.1"),
+      response(),
+      next,
     );
+    expect(next).toHaveBeenCalledOnce();
   });
 
-  it('ignores x-forwarded-for when trustProxyHeaders is false', async () => {
-    mockRedis.sismember.mockResolvedValue(1);
-    const module = new SecurityModule({
-      redisClient: mockRedis as any,
-      trustProxyHeaders: false,
+  it("stops at the first untrusted proxy instead of accepting a spoofed leftmost hop", async () => {
+    security = new SecurityModule({
+      redisClient: redis as never,
+      rateLimiterEnabled: false,
+      keyPrefix: "test:security",
+      trustedProxyCidrs: ["10.0.0.0/8"],
     });
-    const req = mockReq({
-      ip: '1.2.3.4',
-      headers: { 'x-forwarded-for': '203.0.113.5' },
-    });
-    const middleware = module.whiteListMiddleware();
-    await middleware(req, mockRes(), next);
+    await security.addIP("203.0.113.10");
+    const next: NextFunction = vi.fn();
 
-    expect(mockRedis.sismember).toHaveBeenCalledWith('whitelist:ips', '1.2.3.4');
-  });
-});
-
-
-describe('rateLimiterMiddleware', () => {
-  it('calls next() when rate limit is not exceeded', async () => {
-    mockRateLimiter.consume.mockResolvedValue(undefined);
-    const module = new SecurityModule({ redisClient: mockRedis as any });
-    const middleware = module.rateLimiterMiddleware();
-    middleware(mockReq(), mockRes(), next);
-
-    await vi.waitFor(() => expect(next).toHaveBeenCalled());
-  });
-
-  it('returns 429 when rate limit is exceeded', async () => {
-    mockRateLimiter.consume.mockRejectedValue(new Error('rate limited'));
-    const module = new SecurityModule({ redisClient: mockRedis as any });
-    const res = mockRes();
-    const middleware = module.rateLimiterMiddleware();
-    middleware(mockReq(), res, next);
-
-    await vi.waitFor(() => expect(res.status).toHaveBeenCalledWith(429));
-    expect(res.send).toHaveBeenCalledWith('Too many Requests');
+    await security.whiteListMiddleware()(
+      request("10.0.0.2", "203.0.113.10, 198.51.100.20"),
+      response(),
+      next,
+    );
     expect(next).not.toHaveBeenCalled();
   });
 
-  it('calls next() immediately when rate limiter is disabled', () => {
-    const module = new SecurityModule({
-      redisClient: mockRedis as any,
+  it("rejects blanket proxy trust without authenticated proxy networks", () => {
+    expect(
+      () =>
+        new SecurityModule({
+          redisClient: redis as never,
+          trustProxyHeaders: true,
+        }),
+    ).toThrow(/trustedProxyCidrs/);
+  });
+
+  it("rejects coercible, conflicting, and unbounded security options", () => {
+    expect(
+      () =>
+        new SecurityModule({
+          redisClient: redis as never,
+          whiteListEnabled: 0 as never,
+        }),
+    ).toThrow(/boolean/i);
+    expect(
+      () =>
+        new SecurityModule({
+          redisClient: redis as never,
+          whiteListEnabled: true,
+          enableWhitelist: false,
+        }),
+    ).toThrow(/conflicts/i);
+    expect(
+      () =>
+        new SecurityModule({
+          redisClient: redis as never,
+          rateLimitPoints: 1_000_001,
+        }),
+    ).toThrow(/1000000/i);
+  });
+
+  it("fails closed when Redis is unavailable", async () => {
+    vi.spyOn(redis, "eval").mockRejectedValueOnce(new Error("down"));
+    await expect(security.isAllowed("203.0.113.10")).resolves.toBe(false);
+  });
+
+  it("applies the configured rate limit to the resolved client", async () => {
+    const limited = new SecurityModule({
+      redisClient: redis as never,
+      whiteListEnabled: false,
+      keyPrefix: "test:security",
+    });
+    consume.mockRejectedValueOnce({
+      msBeforeNext: 1000,
+      remainingPoints: 0,
+      consumedPoints: 101,
+    });
+    const res = response();
+    await limited.rateLimiterMiddleware()(
+      request("192.0.2.20"),
+      res,
+      vi.fn(),
+    );
+    expect(consume).toHaveBeenCalledWith("192.0.2.20");
+    expect(res.status).toHaveBeenCalledWith(429);
+  });
+
+  it("fails closed with 503 when the rate-limit store is unavailable", async () => {
+    const limited = new SecurityModule({
+      redisClient: redis as never,
+      whiteListEnabled: false,
+      keyPrefix: "test:security",
+    });
+    consume.mockRejectedValueOnce(new Error("Redis unavailable"));
+    const res = response();
+    await limited.rateLimiterMiddleware()(
+      request("192.0.2.20"),
+      res,
+      vi.fn(),
+    );
+    expect(res.status).toHaveBeenCalledWith(503);
+  });
+
+  it("does not mistake an unknown thrown object for a rate-limit decision", async () => {
+    const limited = new SecurityModule({
+      redisClient: redis as never,
+      whiteListEnabled: false,
+      keyPrefix: "test:security",
+    });
+    consume.mockRejectedValueOnce({ unexpected: "store protocol failure" });
+    const res = response();
+    await limited.rateLimiterMiddleware()(
+      request("192.0.2.20"),
+      res,
+      vi.fn(),
+    );
+    expect(res.status).toHaveBeenCalledWith(503);
+  });
+
+  it("provides enforcing Helmet defaults and a disabled pass-through", () => {
+    expect(typeof security.helmetMiddleware()).toBe("function");
+    const disabled = new SecurityModule({
+      redisClient: redis as never,
+      helmetEnabled: false,
       rateLimiterEnabled: false,
     });
-    const middleware = module.rateLimiterMiddleware();
-    middleware(mockReq(), mockRes(), next);
-
-    expect(next).toHaveBeenCalled();
-    expect(mockRateLimiter.consume).not.toHaveBeenCalled();
-  });
-});
-
-
-describe('helmetMiddleware', () => {
-  it('returns a passthrough middleware when helmet is disabled', () => {
-    const module = new SecurityModule({
-      redisClient: mockRedis as any,
-      helmetEnabled: false,
-    });
-    const middleware = module.helmetMiddleware();
-    middleware(mockReq(), mockRes(), next);
-
-    expect(next).toHaveBeenCalled();
-  });
-
-  it('returns a function when helmet is enabled', () => {
-    const module = new SecurityModule({ redisClient: mockRedis as any });
-    const middleware = module.helmetMiddleware();
-
-    expect(typeof middleware).toBe('function');
+    const next: NextFunction = vi.fn();
+    disabled.helmetMiddleware()(request("192.0.2.1"), response(), next);
+    expect(next).toHaveBeenCalledOnce();
   });
 });

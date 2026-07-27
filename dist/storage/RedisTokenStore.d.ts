@@ -1,7 +1,7 @@
 export declare class RedisTokenStore {
-    private redis?;
+    private readonly redis;
     private readonly prefix;
-    constructor(redis?: any | undefined, _debug?: boolean);
+    constructor(redis: any, _debug?: boolean, prefix?: string);
     storeRefreshToken(token: string, userId: string, ttl: number): Promise<void>;
     getRefreshToken(userId: string): Promise<string | null>;
     compareAndSet(key: string, expected: string, value: string, expiry?: number): Promise<boolean>;

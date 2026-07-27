@@ -1,24 +1,25 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.createIncognito = void 0;
-const jwtAuth_1 = require("./jwtAuth");
 const createIncognito = (options) => {
-    const legacyVerifier = options.jwtSecret
-        ? new jwtAuth_1.JWTService({ jwtSecret: options.jwtSecret })
-        : undefined;
-    const verifyAccessToken = options.verifyAccessToken ?? legacyVerifier?.verifyToken.bind(legacyVerifier);
-    const verifyGuestToken = options.verifyGuestToken ?? legacyVerifier?.verifyGuestToken.bind(legacyVerifier);
-    if (!verifyAccessToken || !verifyGuestToken) {
-        throw new Error("Incognito mode requires token verification functions");
+    if (typeof options.guestToken !== "function" ||
+        typeof options.verifyAccessToken !== "function" ||
+        typeof options.verifyGuestToken !== "function") {
+        throw new Error("Incognito mode requires issuance and purpose-bound verification functions");
     }
     return async (req, res, next) => {
-        const authHeader = req.headers.authorization;
-        const token = authHeader?.startsWith("Bearer ")
-            ? authHeader.slice("Bearer ".length).trim()
-            : undefined;
+        const authorization = req.headers.authorization;
+        const match = typeof authorization === "string" &&
+            authorization.length <= 16 * 1024 + 16
+            ? /^Bearer ([A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)$/i.exec(authorization)
+            : null;
+        if (authorization && !match) {
+            return res.status(401).json({ error: "Invalid authorization header" });
+        }
+        const token = match?.[1];
         if (!token) {
             const guestToken = await options.guestToken();
-            const user = await verifyGuestToken(guestToken);
+            const user = await options.verifyGuestToken(guestToken);
             if (!user) {
                 return res.status(500).json({ error: "Unable to issue guest token" });
             }
@@ -26,7 +27,7 @@ const createIncognito = (options) => {
             res.setHeader("X-Guest-Token", guestToken);
             return next();
         }
-        const user = await verifyAccessToken(token);
+        const user = await options.verifyAccessToken(token);
         if (!user) {
             return res.status(401).json({ error: "Invalid or expired token" });
         }

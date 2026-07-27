@@ -1,11 +1,19 @@
 import type { NextFunction, Request, Response } from "express";
 import type { Authenik8JwkConfig } from "./jwk";
 import { SessionMetadata } from "./sessionStore";
+import type { AuditEmitter } from "../audit/types";
+import type { SessionObservation, SessionRiskReporter } from "../risk/types";
 export interface JwtPayload {
     [key: string]: unknown;
     userId?: string;
     email?: string;
     role?: string;
+    roles?: string[];
+    permissions?: string[];
+    scopes?: string[];
+    scope?: string;
+    tenantId?: string;
+    tenantIds?: string[];
     sessionId?: string;
     type?: string;
     id?: string;
@@ -26,18 +34,25 @@ export interface JWTOptions {
     redisClient?: any;
     onGuestToken?: () => void;
     allowCookieAuth?: boolean;
+    audit?: AuditEmitter;
+    risk?: SessionRiskReporter;
+    resolveRequestContext?: (request: Request) => SessionObservation;
+    sessionKeyPrefix?: string;
 }
 type SignablePayload = Record<string, unknown> & {
     userId?: string;
     sessionId?: string;
 };
 export declare class JWTService {
-    private readonly expiry;
+    private readonly expirySeconds;
     private readonly redisClient?;
     private readonly onGuestToken?;
     private readonly allowCookieAuth;
     private readonly sessionStore;
     private readonly keyRing;
+    private readonly audit?;
+    private readonly risk?;
+    private readonly resolveRequestContext?;
     constructor(options: JWTOptions);
     get issuer(): string;
     get audience(): string | string[];
@@ -58,6 +73,7 @@ export declare class JWTService {
     private tokenFromRequest;
     private sessionIsValid;
     private persistSessionToken;
+    private correlationId;
 }
 export {};
 //# sourceMappingURL=jwtAuth.d.ts.map

@@ -1,5 +1,5 @@
+import type { NextFunction, Request, Response } from "express";
 import { Redis as RedisClient } from "ioredis";
-import { Request, Response, NextFunction } from "express";
 type TokenBucketResult = {
     allowed: boolean;
     remaining: number;
@@ -7,15 +7,17 @@ type TokenBucketResult = {
 };
 export declare class TokenBucket {
     private readonly redis;
-    constructor(redis: RedisClient);
+    private readonly keyPrefix;
+    constructor(redis: RedisClient, keyPrefix?: string);
     consume(key: string, capacity: number, refillRate: number): Promise<TokenBucketResult>;
 }
 export declare const initializeRateLimiter: () => Promise<TokenBucket>;
-export declare const createRatelimiter: (config: {
+type RateLimiterConfig = {
     capacity: number;
     refillRate: number;
-    keyGenerator: (req: Request) => string;
-}) => (req: Request, res: Response, next: NextFunction) => Promise<void>;
+    keyGenerator: (req: Request) => string | readonly string[];
+};
+export declare const createRatelimiter: (config: RateLimiterConfig) => (req: Request, res: Response, next: NextFunction) => Promise<void>;
 export declare const OTPLimiterMiddleware: (req: Request, res: Response, next: NextFunction) => Promise<void>;
 export declare const LoginLimiterMiddleware: () => (req: Request, res: Response, next: NextFunction) => Promise<void>;
 export {};

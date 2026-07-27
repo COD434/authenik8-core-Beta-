@@ -59,11 +59,11 @@ describe('TokenBucket', () => {
     expect(mockRedis.eval).toHaveBeenCalledWith(
       expect.any(String),
       1,
-      'rate_limit:test-key',
+      expect.stringMatching(/^authenik8:limiter:bucket:[A-Za-z0-9_-]{43}$/),
       '10',
       '1',
       expect.any(String),
-      '3600'
+      '60'
     );
   });
 
@@ -110,11 +110,11 @@ describe('TokenBucket', () => {
     expect(mockRedis.eval).toHaveBeenCalledWith(
       expect.any(String),
       1,
-      'rate_limit:test-key',
+      expect.stringMatching(/^authenik8:limiter:bucket:[A-Za-z0-9_-]{43}$/),
       '10',
       '1',
       expect.any(String),
-      '3600'
+      '60'
     );
   });
 });
@@ -217,11 +217,11 @@ describe('createRatelimiter', () => {
     expect(mockRedis.eval).toHaveBeenCalledWith(
       expect.any(String),
       1,
-      'rate_limit:user@example.com',
+      expect.stringMatching(/^authenik8:limiter:bucket:[A-Za-z0-9_-]{43}$/),
       '10',
       '2',
       expect.any(String),
-      '3600'
+      '60'
     );
   });
 });

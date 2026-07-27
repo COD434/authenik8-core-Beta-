@@ -29,14 +29,24 @@
   "type": "commonjs",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "require": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
   "engines": {
     "node": "^20.19 || ^22.12 || >=24"
   },
   "files": [
     "dist",
+    "docs",
     "README.md",
     "LICENSE",
-    "CHANGELOG.md"
+    "CHANGELOG.md",
+    "THREAT_MODEL.md"
   ],
   "scripts": {
     "lint": "eslint . --ext .ts --max-warnings=0",
@@ -52,25 +62,24 @@
     "test:matrix": "vitest run --config vitest.config.ts"
   },
   "devDependencies": {
-    "@eslint/js": "^9.36.0",
+    "@eslint/js": "^10.0.1",
     "@types/express": "^5.0.6",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^25.5.0",
     "@types/supertest": "^7.2.0",
     "@vitest/coverage-v8": "^4.1.8",
-    "eslint": "^9.36.0",
+    "eslint": "^10.8.0",
     "globals": "^16.4.0",
     "ioredis-mock": "^8.13.1",
     "jsonwebtoken": "^9.0.3",
     "node-mocks-http": "^1.17.2",
     "supertest": "^7.2.2",
     "typescript": "^5.9.3",
-    "typescript-eslint": "^8.44.1",
+    "typescript-eslint": "^8.65.0",
     "vitest": "^4.1.8"
   },
   "dependencies": {
     "connect-redis": "^9.0.0",
-    "dotenv": "^17.3.1",
     "express": "^5.2.1",
     "google-auth-library": "^10.6.2",
     "helmet": "^8.1.0",

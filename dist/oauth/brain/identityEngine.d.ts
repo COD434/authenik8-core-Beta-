@@ -1,18 +1,17 @@
-import { IdentityEngine } from "../types";
-type IdentityAdapter = {
-    findUserByEmail(email: string): Promise<any>;
-    findUserByProvider(provider: string, providerId: string): Promise<any>;
-    createUser(data: {
-        email: string;
-        provider: string;
-        providerId: string;
-    }): Promise<any>;
-    linkProvider(userId: string, provider: string, providerId: string): Promise<void>;
-};
+import type { AuditEmitter } from "../../audit/types";
+import type { IdentityEngine, OAuthIdentityAdapter } from "../types";
+import { type IdentityPolicy } from "./identityPolicy";
 type TokenService = {
-    signAccessToken(payload: any): Promise<string> | string;
-    generateRefreshToken(payload: any): Promise<string>;
+    issueTokens(payload: {
+        userId: string;
+        email: string;
+        sessionId: string;
+        role?: string;
+    }): Promise<{
+        accessToken: string;
+        refreshToken: string;
+    }>;
 };
-export declare function createIdentityEngine(adapter: IdentityAdapter, tokenService: TokenService): IdentityEngine;
+export declare function createIdentityEngine(adapter: OAuthIdentityAdapter, tokenService: TokenService, audit?: AuditEmitter, policy?: IdentityPolicy): IdentityEngine;
 export {};
 //# sourceMappingURL=identityEngine.d.ts.map

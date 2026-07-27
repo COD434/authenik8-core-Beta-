@@ -3,12 +3,27 @@ import { Request, Response } from "express";
 import crypto from "crypto";
 import { finalizeOAuthCallback } from "../callback";
 import type { OAuthStateStore } from "../types";
+import type { AuditEmitter } from "../../audit/types";
+import {
+  consumeOAuthState,
+  OAUTH_STATE_BYTES,
+  OAUTH_STATE_TTL_SECONDS,
+} from "../state";
+import {
+  authenticatedUserId,
+  OAUTH_HTTP_TIMEOUT_MS,
+  readBoundedJsonResponse,
+  readOAuthQueryValue,
+  validateOAuthProviderConfig,
+} from "../providerSecurity";
 import {
   OAuthCallbackResult,
   OAuthProfile,
   GoogleOAuthConfig,
   IdentityEngine,
 } from "../types";
+import { containsControlCharacter } from "../../utility/safeString";
+import { normalizeIdentityEmail } from "../identityValidation";
 
 type GoogleTokenResponse = {
   access_token?: string;
@@ -18,27 +33,46 @@ type GoogleTokenResponse = {
 export function createGoogleProvider(
   config: GoogleOAuthConfig,
   stateStore: OAuthStateStore,
-  identityEngine?: IdentityEngine
+  identityEngine?: IdentityEngine,
+  audit?: AuditEmitter,
 ) {
-  const { clientId, clientSecret, redirectUri } = config;
+  const providerConfig = Object.freeze({ ...config });
+  const { clientId } = providerConfig;
+  validateOAuthProviderConfig(providerConfig);
 
   return {
-    redirect: async (req: Request, res: Response): Promise<void> => {
+    redirect: async (
+      req: Request,
+      res: Response,
+      mode: "login" | "link" = "login",
+    ): Promise<void> => {
       try {
-        const state = crypto.randomBytes(32).toString("hex");
-        const mode = req.path.includes("link") ? "link" : "login";
-        const authUser = (req as any).user ?? null;
+        const state = crypto.randomBytes(OAUTH_STATE_BYTES).toString("hex");
+        const userId = authenticatedUserId(req);
+        if (mode === "link" && !userId) {
+          res.status(401).json({ error: "Authentication required for linking" });
+          return;
+        }
 
         await stateStore.set(
           state,
           {
-            userId: authUser?.userId ?? null,
+            userId: mode === "link" ? userId : null,
             mode,
           },
-          300
+          OAUTH_STATE_TTL_SECONDS,
         );
+        await audit?.emit({
+          type: "oauth.state_created",
+          severity: "info",
+          outcome: "success",
+          actor: userId
+            ? { type: "user", id: userId }
+            : { type: "unknown" },
+          metadata: { provider: "google", mode },
+        });
 
-        res.redirect(googleAuthorizationUrl(config, state));
+        res.redirect(googleAuthorizationUrl(providerConfig, state));
         return;
       } catch {
         res.status(500).json({ error: "OAuth redirect failed" });
@@ -47,16 +81,30 @@ export function createGoogleProvider(
     },
 
     handleCallback: async (req: Request): Promise<OAuthCallbackResult> => {
-      const code = req.query.code as string;
-      const state = req.query.state as string;
+      const code = readOAuthQueryValue(req, "code");
+      const state = readOAuthQueryValue(req, "state");
 
-      if (!state ) {
+      if (!state) {
+        await audit?.emit({
+          type: "oauth.state_rejected",
+          severity: "warning",
+          outcome: "denied",
+          actor: { type: "unknown" },
+          metadata: { provider: "google", reason: "missing" },
+        });
         throw new Error("OAuthError:Missing state");
       }
 
-      const stored = await stateStore.get(state);
+      const stored = await consumeOAuthState(stateStore, state);
 
       if (!stored) {
+        await audit?.emit({
+          type: "oauth.state_rejected",
+          severity: "warning",
+          outcome: "denied",
+          actor: { type: "unknown" },
+          metadata: { provider: "google", reason: "invalid_or_expired" },
+        });
         throw new Error("OAuthError:Invalid or expired state");
       }
 
@@ -71,18 +119,28 @@ export function createGoogleProvider(
         headers: {
           "Content-Type": "application/x-www-form-urlencoded",
         },
-        body: googleTokenRequestBody(config, code),
+        body: googleTokenRequestBody(providerConfig, code),
+        signal: AbortSignal.timeout(OAUTH_HTTP_TIMEOUT_MS),
       });
 
       if (!tokenRes.ok) {
-        const err = await tokenRes.text();
-        throw new Error(`OAuthError:Token exchange failed->${err}`);
+        throw new Error("OAuthError:Token exchange failed");
       }
 
-      const tokenData = (await tokenRes.json()) as GoogleTokenResponse;
+      const tokenData = (await readBoundedJsonResponse(
+        tokenRes,
+      )) as GoogleTokenResponse;
       const profile = await verifiedGoogleProfile(tokenData, clientId);
 
-      await stateStore.del(state);
+      await audit?.emit({
+        type: "oauth.state_consumed",
+        severity: "info",
+        outcome: "success",
+        actor: userId
+          ? { type: "user", id: userId }
+          : { type: "unknown" },
+        metadata: { provider: "google", mode },
+      });
       return finalizeOAuthCallback(profile, mode, userId, identityEngine);
     },
   };
@@ -120,11 +178,21 @@ const verifiedGoogleProfile = async (
   tokenData: GoogleTokenResponse,
   clientId: string
 ): Promise<OAuthProfile> => {
-  if (!tokenData.access_token) {
+  if (
+    typeof tokenData.access_token !== "string" ||
+    tokenData.access_token.length === 0 ||
+    tokenData.access_token.length > 4096 ||
+    containsControlCharacter(tokenData.access_token)
+  ) {
     throw new Error("OAuthError:No access token returned");
   }
 
-  if (!tokenData.id_token) {
+  if (
+    typeof tokenData.id_token !== "string" ||
+    tokenData.id_token.length === 0 ||
+    tokenData.id_token.length > 16 * 1024 ||
+    containsControlCharacter(tokenData.id_token)
+  ) {
     throw new Error("OAuthError:No id_token returned from Google");
   }
 
@@ -139,11 +207,16 @@ const verifiedGoogleProfile = async (
     throw new Error("OAuthError:Invalid ID token payload");
   }
 
-  if (!payload.email) {
+  if (
+    typeof payload.email !== "string" ||
+    payload.email.length === 0 ||
+    payload.email.length > 254 ||
+    containsControlCharacter(payload.email)
+  ) {
     throw new Error("OAuthError:Email not present in ID token");
   }
 
-  if (!payload.email_verified) {
+  if (payload.email_verified !== true) {
     throw new Error("OAuthError:Email not verified");
   }
 
@@ -153,12 +226,22 @@ const verifiedGoogleProfile = async (
   ) {
     throw new Error("OAuthError: Invalid issuer");
   }
+  if (
+    typeof payload.sub !== "string" ||
+    payload.sub.length === 0 ||
+    payload.sub.length > 512 ||
+    containsControlCharacter(payload.sub)
+  ) {
+    throw new Error("OAuthError:Invalid subject in ID token");
+  }
 
   return {
-    email: payload.email,
-    name: payload.name,
+    email: normalizeIdentityEmail(payload.email),
+    ...(typeof payload.name === "string"
+      ? { name: payload.name.slice(0, 512) }
+      : {}),
     provider: "google",
     providerId: payload.sub,
-    email_verified: payload.email_verified ?? false,
+    email_verified: true,
   };
 };

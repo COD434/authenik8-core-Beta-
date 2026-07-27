@@ -1,4 +1,4 @@
-import { randomUUID } from "crypto";
+import { createHash, randomUUID } from "crypto";
 import Redis from "ioredis";
 
 const parseRedisUrlDb = (value?: string): number | undefined => {
@@ -56,6 +56,7 @@ const scanKeys = async (redis: Redis, pattern: string): Promise<string[]> => {
 export interface RedisTestHelper {
   redis: Redis;
   namespace: string;
+  keyPrefix: string;
   createUserId: (name: string) => string;
   cleanup: () => Promise<void>;
   close: () => Promise<void>;
@@ -64,6 +65,10 @@ export interface RedisTestHelper {
 export const createRedisTestHelper = async (suite: string): Promise<RedisTestHelper> => {
   const namespaceRoot = process.env.AUTHENIK8_TEST_NAMESPACE ?? "local";
   const namespace = `${namespaceRoot}:${suite}:${randomUUID()}`;
+  const keyPrefix = `test:${createHash("sha256")
+    .update(namespace)
+    .digest("hex")
+    .slice(0, 24)}`;
   const redis = buildRedisClient();
 
   await redis.connect();
@@ -73,9 +78,7 @@ export const createRedisTestHelper = async (suite: string): Promise<RedisTestHel
 
   const cleanup = async () => {
     const patterns = [
-      `refresh:${namespace}:*`,
-      `lock:${namespace}:*`,
-      "oauth:v1:*"
+      `${keyPrefix}:*`,
     ];
 
     for (const pattern of patterns) {
@@ -95,6 +98,7 @@ export const createRedisTestHelper = async (suite: string): Promise<RedisTestHel
   return {
     redis,
     namespace,
+    keyPrefix,
     createUserId,
     cleanup,
     close

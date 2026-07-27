@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.AgentIdentityService = exports.AgentIdentityError = exports.verifyAccessTokenWithJwks = exports.generateSigningJwk = exports.createAuthenik8 = void 0;
+exports.RedisSessionRiskStore = exports.SessionRiskService = exports.AuthorizationService = exports.AuditDispatcher = exports.AuditDeliveryError = exports.AgentIdentityService = exports.AgentIdentityError = exports.verifyAccessTokenWithJwks = exports.generateSigningJwk = exports.createAuthenik8 = void 0;
 var createAuthenik8_1 = require("./createAuthenik8");
 Object.defineProperty(exports, "createAuthenik8", { enumerable: true, get: function () { return createAuthenik8_1.createAuthenik8; } });
 var jwk_1 = require("./auth/jwk");
@@ -9,4 +9,13 @@ Object.defineProperty(exports, "verifyAccessTokenWithJwks", { enumerable: true, 
 var agentIdentity_1 = require("./agent/agentIdentity");
 Object.defineProperty(exports, "AgentIdentityError", { enumerable: true, get: function () { return agentIdentity_1.AgentIdentityError; } });
 Object.defineProperty(exports, "AgentIdentityService", { enumerable: true, get: function () { return agentIdentity_1.AgentIdentityService; } });
+var auditDispatcher_1 = require("./audit/auditDispatcher");
+Object.defineProperty(exports, "AuditDeliveryError", { enumerable: true, get: function () { return auditDispatcher_1.AuditDeliveryError; } });
+Object.defineProperty(exports, "AuditDispatcher", { enumerable: true, get: function () { return auditDispatcher_1.AuditDispatcher; } });
+var authorizationService_1 = require("./authorization/authorizationService");
+Object.defineProperty(exports, "AuthorizationService", { enumerable: true, get: function () { return authorizationService_1.AuthorizationService; } });
+var sessionRiskService_1 = require("./risk/sessionRiskService");
+Object.defineProperty(exports, "SessionRiskService", { enumerable: true, get: function () { return sessionRiskService_1.SessionRiskService; } });
+var redisSessionRiskStore_1 = require("./risk/redisSessionRiskStore");
+Object.defineProperty(exports, "RedisSessionRiskStore", { enumerable: true, get: function () { return redisSessionRiskStore_1.RedisSessionRiskStore; } });
 //# sourceMappingURL=index.js.map

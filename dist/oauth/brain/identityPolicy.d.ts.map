@@ -1,1 +1,1 @@
-{"version":3,"file":"identityPolicy.d.ts","sourceRoot":"","sources":["../../../src/oauth/brain/identityPolicy.ts"],"names":[],"mappings":"AAAA,eAAO,MAAM,cAAc;;;CAG1B,CAAC"}
+{"version":3,"file":"identityPolicy.d.ts","sourceRoot":"","sources":["../../../src/oauth/brain/identityPolicy.ts"],"names":[],"mappings":"AAAA,MAAM,WAAW,cAAc;IAC7B,QAAQ,CAAC,4BAA4B,EAAE,OAAO,CAAC;IAC/C,QAAQ,CAAC,uBAAuB,EAAE,OAAO,CAAC;CAC3C;AAED,MAAM,MAAM,oBAAoB,GAAG,OAAO,CAAC,cAAc,CAAC,CAAC;AAE3D,eAAO,MAAM,cAAc,EAAE,cAG3B,CAAC;AAEH,eAAO,MAAM,qBAAqB,GAChC,aAAY,oBAAyB,KACpC,cAcF,CAAC"}

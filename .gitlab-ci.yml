@@ -24,11 +24,7 @@ variables:
   NPM_CONFIG_FUND: "false"
   # Security audit runs in its own job, so skip the install-time audit for speed.
   NPM_CONFIG_AUDIT: "false"
-  # Shared Redis settings for CI jobs that talk to the Redis service container.
-  REDIS_HOST: "redis"
-  REDIS_PORT: "6379"
-  REDIS_URL: "redis://redis:6379/15"
-  # Namespace test data so concurrent pipelines do not collide in Redis.
+  # Integration tests use ioredis-mock and still namespace state per job.
   AUTHENIK8_TEST_NAMESPACE: "ci:${CI_PIPELINE_ID}:${CI_JOB_ID}"
   # Reduce noise and scanning time for generated content.
   SAST_EXCLUDED_PATHS: "dist,coverage,node_modules"
@@ -76,55 +72,8 @@ test:unit:
 test:integration:
   
   stage: test
-  services:
-    - name: redis:7-alpine
-      alias: redis
   script:
     - mkdir -p reports/integration coverage/integration
-    - |
-      node <<'EOF'
-      const Redis = require('ioredis');
-
-      const host = process.env.REDIS_HOST || 'redis';
-      const port = Number(process.env.REDIS_PORT || '6379');
-      const deadline = Date.now() + 30000;
-      const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-
-      (async () => {
-        while (Date.now() < deadline) {
-          const client = new Redis({
-            host,
-            port,
-            lazyConnect: true,
-            enableReadyCheck: true,
-            maxRetriesPerRequest: 1,
-            retryStrategy: null,
-          });
-
-          try {
-            await client.connect();
-            const pong = await client.ping();
-            await client.quit();
-
-            if (pong === 'PONG') {
-              console.log(`Redis is ready at ${host}:${port}`);
-              process.exit(0);
-            }
-          } catch (error) {
-            try {
-              client.disconnect();
-            } catch (_) {
-              // Nothing else to do here; the next loop iteration retries.
-            }
-          }
-
-          await sleep(1000);
-        }
-
-        console.error(`Redis was not ready at ${host}:${port} within 30 seconds`);
-        process.exit(1);
-      })();
-      EOF
     - npm run test:integration:ci
   artifacts:
     when: always
@@ -153,7 +102,7 @@ security:
   stage: security
   script:
     - mkdir -p reports/security
-    - npm audit --audit-level=high --json > reports/security/npm-audit.json
+    - npm audit --audit-level=low --json > reports/security/npm-audit.json
   artifacts:
     when: always
     expire_in: 1 week
@@ -187,12 +136,20 @@ publish:
     # This job overrides default.before_script, so install the compiler and test
     # tooling required by package.json's prepublishOnly safety gate.
     - npm ci --include=dev --prefer-offline
-    - 'echo "Token length: ${#NPM_TOKEN}"'
+    - |
+      if [ -z "${NPM_TOKEN:-}" ]; then
+        echo "NPM_TOKEN is unavailable. Add it in GitLab CI/CD variables and ensure this release tag is protected."
+        exit 1
+      fi
+    - |
+      PACKAGE_VERSION=$(node -p "require('./package.json').version")
+      if [ "v${PACKAGE_VERSION}" != "$CI_COMMIT_TAG" ]; then
+        echo "Release tag ${CI_COMMIT_TAG} does not match package version ${PACKAGE_VERSION}."
+        exit 1
+      fi
+    - npm config set //registry.npmjs.org/:_authToken "$NPM_TOKEN"
+    - npm whoami --registry=https://registry.npmjs.org/
   script:
-    - npm config set //registry.npmjs.org/:_authToken ${NPM_TOKEN}
-    - echo "=== npm config list (registry part) ==="
-    - npm config list | grep -E 'registry|auth'
-    - echo "=== attempting publish ==="
     - npm publish --provenance --access public
   rules:
-    - if: $CI_COMMIT_TAG
+    - if: '$CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+$/ && $CI_COMMIT_REF_PROTECTED == "true"'

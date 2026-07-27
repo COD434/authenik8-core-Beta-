@@ -1,10 +1,64 @@
-import { randomUUID } from "crypto";
-import { JwtKeyRing } from "./jwk";
+import { createHash, randomUUID } from "crypto";
+import { JwtKeyRing, normalizeTokenLifetime } from "./jwk";
 import { SessionStore } from "./sessionStore";
 import { RedisLock } from "../utility/lockHelper";
+import type { AuditEmitter } from "../audit/types";
+import type { SessionRiskReporter } from "../risk/types";
+import {
+  tokenFingerprint,
+  tokenFingerprintMatches,
+} from "./tokenFingerprint";
+import { validateRedisKeyPrefix } from "../redis/keyNamespace";
+import { containsControlCharacter } from "../utility/safeString";
 
 const DEFAULT_REFRESH_TTL_SECONDS = 60 * 60 * 24 * 7;
-const REFRESH_LOCK_TTL_MS = 5000;
+const MAX_REFRESH_TTL_SECONDS = 31 * 24 * 60 * 60;
+const REFRESH_LOCK_TTL_MS = 30_000;
+const MAX_REFRESH_IDENTIFIER_LENGTH = 256;
+const REFRESH_REVOCATION_BATCH_SIZE = 100;
+const MAX_FALLBACK_SESSION_IDS = 10_000;
+const TOKEN_FINGERPRINT_PATTERN = /^[A-Za-z0-9_-]{43}$/;
+
+const validateRefreshIdentifier = (
+  value: unknown,
+  label: string,
+): string => {
+  if (
+    typeof value !== "string" ||
+    value.length === 0 ||
+    value.length > MAX_REFRESH_IDENTIFIER_LENGTH ||
+    containsControlCharacter(value)
+  ) {
+    throw new Error(
+      `${label} must contain between 1 and ${MAX_REFRESH_IDENTIFIER_LENGTH} safe characters`,
+    );
+  }
+  return value;
+};
+
+const pairDigest = (first: string, second: string): string =>
+  createHash("sha256")
+    .update(first)
+    .update("\0")
+    .update(second)
+    .digest("base64url");
+
+const refreshTokenMatches = (
+  storedToken: unknown,
+  presentedToken: string,
+): storedToken is string => {
+  if (
+    typeof storedToken !== "string" ||
+    storedToken.length === 0 ||
+    storedToken.length > 16 * 1024
+  ) {
+    return false;
+  }
+  const expectedFingerprint = TOKEN_FINGERPRINT_PATTERN.test(storedToken)
+    ? storedToken
+    : tokenFingerprint(storedToken);
+  return tokenFingerprintMatches(expectedFingerprint, presentedToken);
+};
 
 export class MissingTokenError extends Error {
   constructor(message = "Missing Token") {
@@ -53,6 +107,9 @@ export interface RefreshServiceOptions {
   audience: string | string[];
   rotateRefreshTokens?: boolean;
   refreshTokenExpiry?: string | number;
+  audit?: AuditEmitter;
+  risk?: SessionRiskReporter;
+  keyPrefix?: string;
 }
 
 export interface RefreshResult {
@@ -64,20 +121,53 @@ export class RefreshService {
   private readonly tokenStore: TokenStore;
   private readonly accessTokenSigner: RefreshServiceOptions["accessTokenSigner"];
   private readonly rotateRefreshTokens: boolean;
-  private readonly refreshTokenExpiry: string | number;
+  private readonly refreshTokenTtl: number;
   private readonly lock: RedisLock;
   private readonly sessionStore: SessionStore;
   private readonly refreshKeys: JwtKeyRing;
   private readonly redisClient: any;
+  private readonly audit?: AuditEmitter;
+  private readonly risk?: SessionRiskReporter;
+  private readonly keyPrefix: string;
 
   constructor(options: RefreshServiceOptions) {
+    if (
+      options.rotateRefreshTokens !== undefined &&
+      typeof options.rotateRefreshTokens !== "boolean"
+    ) {
+      throw new Error("rotateRefreshTokens must be a boolean");
+    }
+    if (!options.tokenStore || typeof options.tokenStore.get !== "function") {
+      throw new Error("TokenStore must implement get()");
+    }
+    if (
+      options.rotateRefreshTokens === true &&
+      typeof options.tokenStore.compareAndSet !== "function"
+    ) {
+      throw new Error(
+        "TokenStore must implement compareAndSet for atomic refresh rotation",
+      );
+    }
     this.tokenStore = options.tokenStore;
     this.redisClient = options.redisClient;
     this.accessTokenSigner = options.accessTokenSigner;
     this.rotateRefreshTokens = options.rotateRefreshTokens ?? false;
-    this.refreshTokenExpiry = options.refreshTokenExpiry ?? "7d";
+    this.refreshTokenTtl = normalizeTokenLifetime(
+      options.refreshTokenExpiry ?? "7d",
+      "refreshTokenExpiry",
+      60,
+      MAX_REFRESH_TTL_SECONDS,
+    );
+    this.audit = options.audit;
+    this.risk = options.risk;
+    this.keyPrefix = options.keyPrefix
+      ? validateRedisKeyPrefix(options.keyPrefix)
+      : "";
     this.lock = new RedisLock(options.redisClient);
-    this.sessionStore = new SessionStore(options.redisClient);
+    this.sessionStore = new SessionStore(
+      options.redisClient,
+      this.scoped("sessions"),
+    );
     this.refreshKeys = new JwtKeyRing({
       legacySecret: options.refreshTokenSecret,
       issuer: options.issuer,
@@ -86,24 +176,65 @@ export class RefreshService {
   }
 
   async generateRefreshToken(payload: RefreshTokenPayload): Promise<string> {
-    if (!payload.userId) {
-      throw new Error("generateRefreshToken: payload.userId is missing");
+    const userId = validateRefreshIdentifier(
+      payload.userId,
+      "generateRefreshToken: payload.userId",
+    );
+    if (
+      typeof payload.email !== "string" ||
+      payload.email.length === 0 ||
+      payload.email.length > 254 ||
+      containsControlCharacter(payload.email)
+    ) {
+      throw new Error("generateRefreshToken: payload.email is invalid");
     }
+    const sessionId =
+      payload.sessionId === undefined
+        ? randomUUID()
+        : validateRefreshIdentifier(
+            payload.sessionId,
+            "generateRefreshToken: payload.sessionId",
+          );
 
     const tokenPayload: RequiredRefreshPayload = {
-      userId: payload.userId,
+      userId,
       email: payload.email,
-      sessionId: payload.sessionId ?? randomUUID(),
+      sessionId,
     };
     const token = await this.signRefreshToken(tokenPayload);
 
+    const key = this.refreshKey(tokenPayload.userId, tokenPayload.sessionId);
     if (this.tokenStore.set) {
       await this.tokenStore.set(
-        this.refreshKey(tokenPayload.userId, tokenPayload.sessionId),
-        token,
+        key,
+        tokenFingerprint(token),
         this.refreshTokenTtlSeconds(),
       );
-      await this.trackRefreshFamily(tokenPayload.userId, tokenPayload.sessionId);
+      try {
+        await this.trackRefreshFamily(
+          tokenPayload.userId,
+          tokenPayload.sessionId,
+        );
+      } catch (error) {
+        await this.tokenStore.del?.(key);
+        throw error;
+      }
+    }
+    try {
+      await this.audit?.emit({
+        type: "refresh_token.issued",
+        severity: "info",
+        outcome: "success",
+        actor: { type: "system" },
+        subject: { type: "user", id: tokenPayload.userId },
+        sessionId: tokenPayload.sessionId,
+      });
+    } catch (error) {
+      await this.revokeRefreshFamily(
+        tokenPayload.userId,
+        tokenPayload.sessionId,
+      );
+      throw error;
     }
 
     return token;
@@ -113,10 +244,18 @@ export class RefreshService {
     if (!refreshToken) throw new MissingTokenError();
 
     const decoded = await this.verifyRefreshToken(refreshToken);
+    if (
+      await this.risk?.isQuarantined(
+        this.principal(decoded.userId, decoded.sessionId),
+      )
+    ) {
+      throw new InvalidTokenError("Session quarantined");
+    }
     const lockKey = this.lockKey(decoded.userId, decoded.sessionId);
     const lockValue = await this.lock.acquire(lockKey, REFRESH_LOCK_TTL_MS);
 
     if (!lockValue) {
+      await this.reportConcurrentRefresh(decoded);
       throw new InvalidTokenError("Concurrent refresh detected");
     }
 
@@ -124,17 +263,44 @@ export class RefreshService {
       const key = this.refreshKey(decoded.userId, decoded.sessionId);
       const storedToken = await this.tokenStore.get(key);
 
-      if (storedToken !== refreshToken) {
-        await this.revokeRefreshFamily(decoded.userId, decoded.sessionId);
+      if (!refreshTokenMatches(storedToken, refreshToken)) {
+        try {
+          await this.risk?.report({
+            type: "refresh_replay",
+            principal: this.principal(decoded.userId, decoded.sessionId),
+          });
+          await this.audit?.emit({
+            type: "refresh_token.replay_detected",
+            severity: "critical",
+            outcome: "denied",
+            actor: { type: "user", id: decoded.userId },
+            sessionId: decoded.sessionId,
+          });
+        } finally {
+          await this.revokeRefreshFamily(decoded.userId, decoded.sessionId);
+        }
         throw new InvalidTokenError();
       }
 
       const newRefreshToken = await this.rotateTokenIfEnabled(
         key,
-        refreshToken,
+        storedToken,
         decoded,
       );
-      const newAccessToken = await this.accessTokenSigner(decoded);
+      let newAccessToken: string;
+      try {
+        newAccessToken = await this.accessTokenSigner(decoded);
+        await this.audit?.emit({
+          type: "refresh_token.rotated",
+          severity: "info",
+          outcome: "success",
+          actor: { type: "user", id: decoded.userId },
+          sessionId: decoded.sessionId,
+        });
+      } catch (error) {
+        await this.revokeRefreshFamily(decoded.userId, decoded.sessionId);
+        throw error;
+      }
 
       return {
         accessToken: newAccessToken,
@@ -146,37 +312,80 @@ export class RefreshService {
   }
 
   async revokeSession(userId: string, sessionId: string): Promise<void> {
-    await this.revokeRefreshFamily(userId, sessionId);
+    const validUserId = validateRefreshIdentifier(userId, "userId");
+    const validSessionId = validateRefreshIdentifier(sessionId, "sessionId");
+    await this.revokeRefreshFamily(validUserId, validSessionId);
+    await this.audit?.emit({
+      type: "session.revoked",
+      severity: "warning",
+      outcome: "success",
+      actor: { type: "system" },
+      subject: { type: "user", id: validUserId },
+      sessionId: validSessionId,
+    });
   }
 
   async revokeAllSessions(
     userId: string,
     fallbackSessionIds: string[] = [],
   ): Promise<void> {
-    const indexedFamilies = this.redisClient?.hgetall
-      ? await this.redisClient.hgetall(this.refreshFamilyIndexKey(userId))
-      : null;
-    const sessionIds = new Set([
-      ...fallbackSessionIds,
-      ...Object.keys(indexedFamilies || {}),
-    ]);
-
-    if (this.tokenStore.del) {
-      await Promise.all(
-        [...sessionIds].map((sessionId) =>
-          this.tokenStore.del!(this.refreshKey(userId, sessionId)),
-        ),
+    const validUserId = validateRefreshIdentifier(userId, "userId");
+    if (fallbackSessionIds.length > MAX_FALLBACK_SESSION_IDS) {
+      throw new Error(
+        `fallbackSessionIds must not contain more than ${MAX_FALLBACK_SESSION_IDS} entries`,
       );
     }
-    if (this.redisClient?.del) {
-      await this.redisClient.del(this.refreshFamilyIndexKey(userId));
+    const validFallbackSessionIds = fallbackSessionIds.map((sessionId) =>
+      validateRefreshIdentifier(sessionId, "sessionId"),
+    );
+    const indexedFamilies: Record<string, string> | null =
+      this.redisClient?.hgetall
+        ? await this.redisClient.hgetall(
+            this.refreshFamilyIndexKey(validUserId),
+          )
+        : null;
+    const sessionIds = new Set([
+      ...validFallbackSessionIds,
+      ...Object.keys(indexedFamilies || {}),
+    ]);
+    for (const sessionId of sessionIds) {
+      validateRefreshIdentifier(sessionId, "indexed sessionId");
     }
-    await this.sessionStore.revokeAll(userId);
+
+    if (this.tokenStore.del) {
+      const pendingSessionIds = [...sessionIds];
+      for (
+        let offset = 0;
+        offset < pendingSessionIds.length;
+        offset += REFRESH_REVOCATION_BATCH_SIZE
+      ) {
+        await Promise.all(
+          pendingSessionIds
+            .slice(offset, offset + REFRESH_REVOCATION_BATCH_SIZE)
+            .map((sessionId) =>
+              this.tokenStore.del!(
+                this.refreshKey(validUserId, sessionId),
+              ),
+            ),
+        );
+      }
+    }
+    if (this.redisClient?.del) {
+      await this.redisClient.del(this.refreshFamilyIndexKey(validUserId));
+    }
+    await this.sessionStore.revokeAll(validUserId);
+    await this.audit?.emit({
+      type: "session.revoked_all",
+      severity: "warning",
+      outcome: "success",
+      actor: { type: "system" },
+      subject: { type: "user", id: validUserId },
+    });
   }
 
   private async rotateTokenIfEnabled(
     key: string,
-    currentRefreshToken: string,
+    storedToken: string,
     decoded: RequiredRefreshPayload,
   ): Promise<string | undefined> {
     if (!this.rotateRefreshTokens) return undefined;
@@ -187,13 +396,17 @@ export class RefreshService {
     const newRefreshToken = await this.signRefreshToken(decoded);
     const rotated = await this.tokenStore.compareAndSet(
       key,
-      currentRefreshToken,
-      newRefreshToken,
+      storedToken,
+      tokenFingerprint(newRefreshToken),
       this.refreshTokenTtlSeconds(),
     );
 
     if (!rotated) {
-      await this.revokeRefreshFamily(decoded.userId, decoded.sessionId);
+      try {
+        await this.reportConcurrentRefresh(decoded);
+      } finally {
+        await this.revokeRefreshFamily(decoded.userId, decoded.sessionId);
+      }
       throw new InvalidTokenError("Concurrent refresh detected");
     }
 
@@ -209,14 +422,24 @@ export class RefreshService {
         "refresh",
       );
 
-      if (!decoded.userId || !decoded.email || !decoded.sessionId) {
+      const userId = validateRefreshIdentifier(decoded.userId, "userId");
+      const sessionId = validateRefreshIdentifier(
+        decoded.sessionId,
+        "sessionId",
+      );
+      if (
+        typeof decoded.email !== "string" ||
+        decoded.email.length === 0 ||
+        decoded.email.length > 254 ||
+        containsControlCharacter(decoded.email)
+      ) {
         throw new InvalidTokenError();
       }
 
       return {
-        userId: decoded.userId,
+        userId,
         email: decoded.email,
-        sessionId: decoded.sessionId,
+        sessionId,
       };
     } catch (error) {
       if (error instanceof InvalidTokenError) throw error;
@@ -226,7 +449,7 @@ export class RefreshService {
 
   private signRefreshToken(payload: RequiredRefreshPayload): Promise<string> {
     return this.refreshKeys.sign(payload, {
-      expiresIn: this.refreshTokenExpiry,
+      expiresInSeconds: this.refreshTokenTtl,
       tokenUse: "refresh",
     });
   }
@@ -255,37 +478,42 @@ export class RefreshService {
   }
 
   private refreshTokenTtlSeconds(): number {
-    if (typeof this.refreshTokenExpiry === "number") {
-      return this.refreshTokenExpiry;
-    }
-
-    const match = /^(\d+)([smhd])$/.exec(this.refreshTokenExpiry);
-    if (!match) return DEFAULT_REFRESH_TTL_SECONDS;
-    const amount = Number(match[1]);
-
-    switch (match[2]) {
-      case "s":
-        return amount;
-      case "m":
-        return amount * 60;
-      case "h":
-        return amount * 60 * 60;
-      case "d":
-        return amount * 60 * 60 * 24;
-      default:
-        return DEFAULT_REFRESH_TTL_SECONDS;
-    }
+    return this.refreshTokenTtl;
   }
 
   private refreshKey(userId: string, sessionId: string): string {
-    return `refresh:${userId}:${sessionId}`;
+    return this.scoped("refresh", pairDigest(userId, sessionId));
   }
 
   private refreshFamilyIndexKey(userId: string): string {
-    return `refresh-families:${userId}`;
+    return this.scoped("refresh-families", userId);
   }
 
   private lockKey(userId: string, sessionId: string): string {
-    return `lock:${userId}:${sessionId}`;
+    return this.scoped("lock", pairDigest(userId, sessionId));
+  }
+
+  private scoped(...parts: string[]): string {
+    return [this.keyPrefix, ...parts].filter(Boolean).join(":");
+  }
+
+  private principal(userId: string, sessionId: string) {
+    return { kind: "human" as const, id: userId, sessionId };
+  }
+
+  private async reportConcurrentRefresh(
+    decoded: RequiredRefreshPayload,
+  ): Promise<void> {
+    await this.risk?.report({
+      type: "concurrent_refresh",
+      principal: this.principal(decoded.userId, decoded.sessionId),
+    });
+    await this.audit?.emit({
+      type: "refresh_token.concurrent_use_detected",
+      severity: "warning",
+      outcome: "denied",
+      actor: { type: "user", id: decoded.userId },
+      sessionId: decoded.sessionId,
+    });
   }
 }

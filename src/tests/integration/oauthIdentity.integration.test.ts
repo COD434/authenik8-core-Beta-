@@ -23,23 +23,30 @@ describe("OAuth identity issuance", () => {
     const email = `${redisHelper.namespace}@example.com`;
     const providerId = `${redisHelper.namespace}:google`;
     const authA = await createAuthenik8({
-      jwtSecret: "oauth-secret",
-      refreshSecret: "oauth-refresh",
+      jwtSecret: "oauth-secret-32-bytes-minimum-value",
+      refreshSecret: "oauth-refresh-32-bytes-minimum-value",
       redis: redisHelper.redis,
+      redisKeyPrefix: redisHelper.keyPrefix,
     });
     const authB = await createAuthenik8({
-      jwtSecret: "oauth-secret",
-      refreshSecret: "oauth-refresh",
+      jwtSecret: "oauth-secret-32-bytes-minimum-value",
+      refreshSecret: "oauth-refresh-32-bytes-minimum-value",
       redis: secondaryRedis,
+      redisKeyPrefix: redisHelper.keyPrefix,
     });
-    const engineA = createIdentityEngine(createRedisIdentityAdapter(redisHelper.redis), {
-      signAccessToken: authA.signToken,
-      generateRefreshToken: authA.generateRefreshToken,
-    });
-    const engineB = createIdentityEngine(createRedisIdentityAdapter(secondaryRedis), {
-      signAccessToken: authB.signToken,
-      generateRefreshToken: authB.generateRefreshToken,
-    });
+    const identityPrefix = `${redisHelper.keyPrefix}:oauth:v1`;
+    const engineA = createIdentityEngine(
+      createRedisIdentityAdapter(redisHelper.redis, identityPrefix),
+      {
+        issueTokens: authA.issueTokens,
+      },
+    );
+    const engineB = createIdentityEngine(
+      createRedisIdentityAdapter(secondaryRedis, identityPrefix),
+      {
+        issueTokens: authB.issueTokens,
+      },
+    );
 
     const firstTokens = await engineA.resolveOAuth({
       mode: "login",
@@ -72,9 +79,10 @@ describe("OAuth identity issuance", () => {
 
   test("does not expose caller-supplied OAuth profile token issuance", async () => {
     const auth = await createAuthenik8({
-      jwtSecret: "oauth-secret",
-      refreshSecret: "oauth-refresh",
+      jwtSecret: "oauth-secret-32-bytes-minimum-value",
+      refreshSecret: "oauth-refresh-32-bytes-minimum-value",
       redis: redisHelper.redis,
+      redisKeyPrefix: redisHelper.keyPrefix,
     });
 
     expect(auth).not.toHaveProperty("issueTokensFromProfile");

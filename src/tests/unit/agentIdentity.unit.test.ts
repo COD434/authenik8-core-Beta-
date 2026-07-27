@@ -152,6 +152,12 @@ describe("agent identity", () => {
         scopes: [`tasks:${"r".repeat(123)}`],
       }),
     ).rejects.toMatchObject({ code: "AGENT_SCOPE_DENIED" });
+    await expect(
+      agents.issueToken({
+        agentId: "worker-1",
+        label: "worker\nforged",
+      }),
+    ).rejects.toMatchObject({ code: "AGENT_INVALID" });
   });
 
   it("invalidates existing tokens when registry grants are removed", async () => {
@@ -245,7 +251,7 @@ describe("agent identity", () => {
     const denied = new AgentIdentityService({
       config: { resolveAgent: async (agentId) => registry.get(agentId) ?? null },
       redisClient: redis,
-      legacySecret: "agent-test-secret",
+      legacySecret: "agent-test-secret-32-bytes-minimum",
       issuer: "issuer",
       audience: "audience",
       verifyHumanToken: human.verifyActiveToken.bind(human),
@@ -254,6 +260,30 @@ describe("agent identity", () => {
 
     await expect(
       denied.issueDelegatedToken({
+        agentId: "worker-1",
+        userAccessToken,
+        scopes: ["tasks:read"],
+      }),
+    ).rejects.toMatchObject({ code: "AGENT_DELEGATION_DENIED" });
+  });
+
+  it("requires an exact boolean true from delegation policy", async () => {
+    const userAccessToken = await human.signToken({ userId: "user-1" });
+    const unsafePolicy = new AgentIdentityService({
+      config: {
+        resolveAgent: async (agentId) => registry.get(agentId) ?? null,
+        authorizeDelegation: (async () => "true") as never,
+      },
+      redisClient: redis,
+      legacySecret: "agent-test-secret-32-bytes-minimum",
+      issuer: "issuer",
+      audience: "audience",
+      verifyHumanToken: human.verifyActiveToken.bind(human),
+      hasHumanSession: human.hasActiveSession.bind(human),
+    });
+
+    await expect(
+      unsafePolicy.issueDelegatedToken({
         agentId: "worker-1",
         userAccessToken,
         scopes: ["tasks:read"],
@@ -296,12 +326,16 @@ describe("agent identity", () => {
         new AgentIdentityService({
           config: { resolveAgent: async () => null },
           redisClient: {},
-          legacySecret: "agent-test-secret",
+          legacySecret: "agent-test-secret-32-bytes-minimum",
           issuer: "issuer",
           audience: "audience",
           verifyHumanToken: async () => null,
           hasHumanSession: async () => false,
         }),
     ).toThrow(AgentIdentityError);
+  });
+
+  it("rejects oversized compact tokens before unverified claim decoding", async () => {
+    await expect(agents.verifyToken("a".repeat(20_000))).resolves.toBeNull();
   });
 });

@@ -1,253 +1,204 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { createGitHubProvider } from '../../oauth/providers/github';
-import type { Request, Response } from 'express';
+import type { Request, Response } from "express";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { createGitHubProvider } from "../../oauth/providers/github";
+import type { IdentityEngine, OAuthStateStore } from "../../oauth/types";
 
-
-const mockStateStore = {
-  set: vi.fn().mockResolvedValue(undefined),
-  get: vi.fn(),
-  del: vi.fn().mockResolvedValue(undefined),
+const VALID_STATE = "b".repeat(64);
+const config = {
+  clientId: "github-client-id",
+  clientSecret: "github-client-secret-32-bytes-minimum",
+  redirectUri: "https://app.example.test/auth/github/callback",
 };
-
-const mockIdentityEngine = {
-  resolveOAuth: vi.fn(),
-};
-
-const mockConfig = {
-  clientId: 'gh-client-id',
-  clientSecret: 'gh-client-secret',
-  redirectUri: 'https://myapp.com/auth/github/callback',
-};
-
-const mockReq = (overrides = {}) =>
+const request = (overrides: Record<string, unknown> = {}) =>
   ({
     query: {},
-    user: null,
+    headers: {},
+    socket: { remoteAddress: "192.0.2.1" },
     ...overrides,
   }) as unknown as Request;
-
-const mockRes = () => {
-  const res = {
+const response = () =>
+  ({
     headersSent: false,
     redirect: vi.fn(),
-  };
-  return res as unknown as Response;
-};
+    status: vi.fn().mockReturnThis(),
+    json: vi.fn().mockReturnThis(),
+  }) as unknown as Response;
 
-
-function makeStoredState(overrides = {}) {
-  return { userId: null, mode: 'login' as const, ...overrides };
-}
-
-function mockFetchSequence(...responses: Array<{ ok?: boolean; text?:string; json: any }>) {
-  let call = 0;
-  vi.stubGlobal(
-    'fetch',
-    vi.fn(async () => {
-      const r = responses[call++];
-      if (!r) throw new Error('mockFetchSequence: unexpected fetch call');
-      return {
-        ok: r.ok ?? true,
-	text: async () => r.text ?? '',
-        json: async () => r.json ?? {}
-		
-      };
-    })
-  );
-}
-
-beforeEach(() => {
-  vi.clearAllMocks();
-  vi.unstubAllGlobals();
-});
-
-describe('createGitHubProvider', () => {
-  let provider: ReturnType<typeof createGitHubProvider>;
+describe("createGitHubProvider", () => {
+  let stateStore: OAuthStateStore;
+  let identityEngine: IdentityEngine;
 
   beforeEach(() => {
-    provider = createGitHubProvider(
-      mockConfig,
-      mockStateStore as any,
-      mockIdentityEngine as any
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+    stateStore = {
+      set: vi.fn().mockResolvedValue(undefined),
+      take: vi.fn().mockResolvedValue({ mode: "login", userId: null }),
+    };
+    identityEngine = {
+      resolveOAuth: vi.fn(async () => ({
+        type: "EXISTING_PROVIDER_LOGIN" as const,
+        user: {
+          id: "user-1",
+          email: "dev@example.com",
+          providers: [],
+        },
+        accessToken: "access",
+        refreshToken: "refresh",
+      })),
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValueOnce(
+          new Response(JSON.stringify({ access_token: "github-access" })),
+        )
+        .mockResolvedValueOnce(
+          new Response(JSON.stringify({ id: 42, name: "Dev User" })),
+        )
+        .mockResolvedValueOnce(
+          new Response(
+            JSON.stringify([
+            {
+              email: "dev@example.com",
+              primary: true,
+              verified: true,
+            },
+            ]),
+          ),
+        ),
     );
   });
 
-  
-  describe('redirect', () => {
-    it('stores state in Redis and redirects to GitHub', async () => {
-      const req = mockReq();
-      const res = mockRes();
+  it("creates 256-bit login state and the expected authorization URL", async () => {
+    const provider = createGitHubProvider(config, stateStore, identityEngine);
+    const res = response();
+    await provider.redirect(request(), res);
 
-      await provider.redirect(req, res);
+    expect(stateStore.set).toHaveBeenCalledWith(
+      expect.stringMatching(/^[a-f0-9]{64}$/),
+      { mode: "login", userId: null },
+      300,
+    );
+    const url = new URL(String(vi.mocked(res.redirect).mock.calls[0]![0]));
+    expect(url.origin).toBe("https://github.com");
+    expect(url.searchParams.get("scope")).toBe("read:user user:email");
+  });
 
-      expect(mockStateStore.set).toHaveBeenCalledWith(
-        expect.any(String),
-        expect.objectContaining({ mode: 'login' }),
-        300
-      );
-      expect(res.redirect).toHaveBeenCalledWith(
-        expect.stringContaining('https://github.com/login/oauth/authorize')
-      );
+  it("requires authentication for link state", async () => {
+    const provider = createGitHubProvider(config, stateStore, identityEngine);
+    const res = response();
+    await provider.redirect(request(), res, "link");
+    expect(res.status).toHaveBeenCalledWith(401);
+    expect(stateStore.set).not.toHaveBeenCalled();
+  });
+
+  it("binds link state to the authenticated user", async () => {
+    const provider = createGitHubProvider(config, stateStore, identityEngine);
+    await provider.redirect(
+      request({ user: { userId: "user-1" } }),
+      response(),
+      "link",
+    );
+    expect(stateStore.set).toHaveBeenCalledWith(
+      expect.any(String),
+      { mode: "link", userId: "user-1" },
+      300,
+    );
+  });
+
+  it("rejects malformed state before outbound requests", async () => {
+    const provider = createGitHubProvider(config, stateStore, identityEngine);
+    await expect(
+      provider.handleCallback(
+        request({ query: { code: "code", state: "forged" } }),
+      ),
+    ).rejects.toThrow(/invalid or expired state/i);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("atomically consumes state even when the code is missing", async () => {
+    const provider = createGitHubProvider(config, stateStore, identityEngine);
+    await expect(
+      provider.handleCallback(request({ query: { state: VALID_STATE } })),
+    ).rejects.toThrow(/missing code/i);
+    expect(stateStore.take).toHaveBeenCalledWith(VALID_STATE);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("checks HTTP status for token, user, and email responses", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(new Response("{}", { status: 400 })),
+    );
+    const provider = createGitHubProvider(config, stateStore, identityEngine);
+    await expect(
+      provider.handleCallback(
+        request({ query: { code: "code", state: VALID_STATE } }),
+      ),
+    ).rejects.toThrow(/token exchange failed/i);
+  });
+
+  it("requires a verified primary email", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValueOnce(
+          new Response(JSON.stringify({ access_token: "github-access" })),
+        )
+        .mockResolvedValueOnce(new Response(JSON.stringify({ id: 42 })))
+        .mockResolvedValueOnce(
+          new Response(
+            JSON.stringify([
+              {
+                email: "dev@example.com",
+                primary: true,
+                verified: false,
+              },
+            ]),
+          ),
+        ),
+    );
+    const provider = createGitHubProvider(config, stateStore, identityEngine);
+    await expect(
+      provider.handleCallback(
+        request({ query: { code: "code", state: VALID_STATE } }),
+      ),
+    ).rejects.toThrow(/verified primary email/i);
+  });
+
+  it("returns the verified profile and identity token pair", async () => {
+    const provider = createGitHubProvider(config, stateStore, identityEngine);
+    const result = await provider.handleCallback(
+      request({ query: { code: "code", state: VALID_STATE } }),
+    );
+
+    expect(vi.mocked(identityEngine.resolveOAuth)).toHaveBeenCalledWith({
+      profile: {
+        email: "dev@example.com",
+        name: "Dev User",
+        provider: "github",
+        providerId: "42",
+        email_verified: true,
+      },
+      mode: "login",
+      userId: null,
     });
-
-    it('includes clientId, redirectUri, scope and state in the redirect URL', async () => {
-      const req = mockReq();
-      const res = mockRes();
-
-      await provider.redirect(req, res);
-
-      const url = new URL((res.redirect as any).mock.calls[0][0]);
-      expect(url.searchParams.get('client_id')).toBe(mockConfig.clientId);
-      expect(url.searchParams.get('redirect_uri')).toBe(mockConfig.redirectUri);
-      expect(url.searchParams.get('scope')).toBe('read:user user:email');
-      expect(url.searchParams.get('state')).toBeTruthy();
-    });
-
-    it('stores userId from req.user in Redis state', async () => {
-      const req = mockReq({ user: { userId: 'user-123' } });
-      const res = mockRes();
-
-      await provider.redirect(req, res, 'link');
-
-      expect(mockStateStore.set).toHaveBeenCalledWith(
-        expect.any(String),
-        expect.objectContaining({ userId: 'user-123' }),
-        300
-      );
-    });
-
-    it('stores mode=link when link mode is passed', async () => {
-      const req = mockReq();
-      const res = mockRes();
-
-      await provider.redirect(req, res, 'link');
-
-      expect(mockStateStore.set).toHaveBeenCalledWith(
-        expect.any(String),
-        expect.objectContaining({ mode: 'link' }),
-        300
-      );
-    });
-
-    it('skips redirect when headers are already sent', async () => {
-      const req = mockReq();
-      const res = { ...mockRes(), headersSent: true };
-
-      await provider.redirect(req, res as unknown as Response);
-
-      expect(res.redirect).not.toHaveBeenCalled();
-      expect(mockStateStore.set).not.toHaveBeenCalled();
+    expect(result).toMatchObject({
+      accessToken: "access",
+      refreshToken: "refresh",
     });
   });
 
-  
-  describe('handleCallback', () => {
-    it('throws when state is missing from query', async () => {
-      const req = mockReq({ query: { code: 'abc' } });
-
-      await expect(provider.handleCallback(req)).rejects.toThrow(
-        'OAuthError:Missing state'
-      );
-    });
-
-    it('throws when state is not found in Redis', async () => {
-      mockStateStore.get.mockResolvedValue(null);
-      const req = mockReq({ query: { code: 'abc', state: 'bad-state' } });
-
-      await expect(provider.handleCallback(req)).rejects.toThrow(
-        'OAuthError:Invalid or expired state'
-      );
-    });
-
-    it('throws when code is missing from query', async () => {
-      mockStateStore.get.mockResolvedValue(makeStoredState());
-      const req = mockReq({ query: { state: 'valid-state' } });
-
-      await expect(provider.handleCallback(req)).rejects.toThrow(
-        'OAuthError: Missing code'
-      );
-    });
-
-    it('throws when GitHub returns no access token', async () => {
-      mockStateStore.get.mockResolvedValue(makeStoredState());
-      mockFetchSequence({ json: {} }); // token exchange returns empty
-
-      const req = mockReq({ query: { code: 'mycode', state: 'valid-state' } });
-
-      await expect(provider.handleCallback(req)).rejects.toThrow(
-        'OAuthError: No access token from Github'
-      );
-    });
-
-    it('throws when GitHub user fetch fails', async () => {
-      mockStateStore.get.mockResolvedValue(makeStoredState());
-      mockFetchSequence(
-        { json: { access_token: 'gh-token' } }, 
-        { ok: false, json: {} }                  
-      );
-
-      const req = mockReq({ query: { code: 'mycode', state: 'valid-state' } });
-
-      await expect(provider.handleCallback(req)).rejects.toThrow(
-        'OAuthError: Failed to fetch GitHub user'
-      );
-    });
-
-    it('throws when no verified primary email is found', async () => {
-      mockStateStore.get.mockResolvedValue(makeStoredState());
-      mockFetchSequence(
-        { json: { access_token: 'gh-token' } },
-        { json: { id: 99, name: 'Dev' } },
-        { json: [{ email: 'nope@example.com', primary: false, verified: true }] }
-      );
-
-      const req = mockReq({ query: { code: 'mycode', state: 'valid-state' } });
-
-      await expect(provider.handleCallback(req)).rejects.toThrow(
-        'OAuthError: No verified primary email found'
-      );
-    });
-
-    it('returns profile, mode and userId on success', async () => {
-      mockStateStore.get.mockResolvedValue(
-        makeStoredState({ userId: 'user-123', mode: 'link' })
-      );
-      mockFetchSequence(
-        { json: { access_token: 'gh-token' } },
-        { json: { id: 42, name: 'Dev User' } },
-        {
-          json: [
-            { email: 'dev@example.com', primary: true, verified: true },
-          ],
-        }
-      );
-
-      const req = mockReq({ query: { code: 'mycode', state: 'valid-state' } });
-      const result = await provider.handleCallback(req);
-
-      expect(result.profile).toEqual({
-        email: 'dev@example.com',
-        name: 'Dev User',
-        provider: 'github',
-        providerId: '42',
-        email_verified: true,
-      });
-      expect(result.mode).toBe('link');
-      expect(result.userId).toBe('user-123');
-    });
-
-    it('deletes the state key from Redis after success', async () => {
-      mockStateStore.get.mockResolvedValue(makeStoredState());
-      mockFetchSequence(
-        { json: { access_token: 'gh-token' } },
-        { json: { id: 42, name: 'Dev' } },
-        { json: [{ email: 'dev@example.com', primary: true, verified: true }] }
-      );
-
-      const req = mockReq({ query: { code: 'mycode', state: 'valid-state' } });
-      await provider.handleCallback(req);
-
-      expect(mockStateStore.del).toHaveBeenCalledWith('valid-state');
-    });
+  it("rejects the misleading unsupported enterprise flag", () => {
+    expect(() =>
+      createGitHubProvider(
+        { ...config, enterprise: true },
+        stateStore,
+        identityEngine,
+      ),
+    ).toThrow(/enterprise/i);
   });
 });

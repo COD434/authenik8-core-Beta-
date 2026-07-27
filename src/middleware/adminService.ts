@@ -1,41 +1,40 @@
 import type { NextFunction, Request, RequestHandler, Response } from "express";
-import { JWTService } from "../auth/jwtAuth";
 import { SessionStore } from "../auth/sessionStore";
 
 const ADMIN_ONLY_ERROR = { error: "Forbidden: Admin only" };
 
 export interface RequireAdminOptions {
-  requireAuth?: RequestHandler;
-  /** @deprecated Pass the instance's session-aware `requireAuth` middleware. */
-  jwtSecret?: string;
-  store?: any;
-  allowCookieAuth?: boolean;
+  /** Must enforce token purpose and active session state. */
+  requireAuth: RequestHandler;
+  store?: unknown;
   listSessions?: (userId: string) => Promise<unknown[]>;
   revokeSession?: (userId: string, sessionId: string) => Promise<void>;
   revokeAllSessions?: (userId: string) => Promise<void>;
 }
 
 export const requireAdmin = (options: RequireAdminOptions): RequestHandler => {
-  const sessionStore = new SessionStore(options.store);
-  const requireAuth =
-    options.requireAuth ??
-    new JWTService({
-      jwtSecret: options.jwtSecret,
-      redisClient: options.store,
-      allowCookieAuth: options.allowCookieAuth,
-    }).authenticateJWT;
+  if (typeof options.requireAuth !== "function") {
+    throw new Error("requireAdmin requires session-aware requireAuth middleware");
+  }
+  const sessionStore = new SessionStore(options.store as never);
 
-  return async (req: Request, res: Response, next: NextFunction) => {
-    return requireAuth(req, res, () => {
-      const user = (req as Request & { user?: { role?: string } }).user;
+  return async (req: Request, res: Response, next: NextFunction) =>
+    options.requireAuth(req, res, () => {
+      const user = (req as Request & { user?: { role?: unknown } }).user;
       if (user?.role !== "admin") {
         return res.status(403).json(ADMIN_ONLY_ERROR);
       }
 
-      if (options.store || options.listSessions) attachAdminActions(req, sessionStore, options);
+      if (
+        options.store ||
+        options.listSessions ||
+        options.revokeSession ||
+        options.revokeAllSessions
+      ) {
+        attachAdminActions(req, sessionStore, options);
+      }
       return next();
     });
-  };
 };
 
 const attachAdminActions = (
@@ -43,11 +42,20 @@ const attachAdminActions = (
   sessionStore: SessionStore,
   options: RequireAdminOptions,
 ) => {
-  (req as any).adminActions = {
+  (
+    req as Request & {
+      adminActions?: {
+        listSessions(userId: string): Promise<unknown[]>;
+        revokeSession(userId: string, sessionId: string): Promise<void>;
+        revokeAllSessions(userId: string): Promise<void>;
+      };
+    }
+  ).adminActions = {
     listSessions: (userId: string) =>
       options.listSessions?.(userId) ?? sessionStore.list(userId),
     revokeSession: (userId: string, sessionId: string) =>
-      options.revokeSession?.(userId, sessionId) ?? sessionStore.revoke(userId, sessionId),
+      options.revokeSession?.(userId, sessionId) ??
+      sessionStore.revoke(userId, sessionId),
     revokeAllSessions: (userId: string) =>
       options.revokeAllSessions?.(userId) ?? sessionStore.revokeAll(userId),
   };

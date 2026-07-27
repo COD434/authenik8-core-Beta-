@@ -1,10 +1,8 @@
 import type { RequestHandler } from "express";
 export interface RequireAdminOptions {
-    requireAuth?: RequestHandler;
-    /** @deprecated Pass the instance's session-aware `requireAuth` middleware. */
-    jwtSecret?: string;
-    store?: any;
-    allowCookieAuth?: boolean;
+    /** Must enforce token purpose and active session state. */
+    requireAuth: RequestHandler;
+    store?: unknown;
     listSessions?: (userId: string) => Promise<unknown[]>;
     revokeSession?: (userId: string, sessionId: string) => Promise<void>;
     revokeAllSessions?: (userId: string) => Promise<void>;

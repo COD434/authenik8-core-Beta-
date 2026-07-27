@@ -219,7 +219,7 @@ describe("adversarial fuzzing", () => {
   test("never promotes a mutated or forged token through auth middleware", async () => {
     const fuzzer = createFuzzer(FUZZ_SEED ^ 0x41555448);
     const auth = new JWTService({ jwtSecret: JWT_SECRET });
-    const admin = requireAdmin({ jwtSecret: JWT_SECRET });
+    const admin = requireAdmin({ requireAuth: auth.authenticateJWT });
     const validAdminToken = jwt.sign(
       { userId: "victim", role: "admin", sessionId: "known-session" },
       JWT_SECRET,
@@ -298,11 +298,14 @@ describe("adversarial fuzzing", () => {
         return null;
       },
       async del() {},
+      async take() {
+        return null;
+      },
     };
     const google = createGoogleProvider(
       {
         clientId: "client",
-        clientSecret: "secret",
+        clientSecret: "google-secret-32-bytes-minimum",
         redirectUri: "https://sdk.test/oauth/google/callback",
       },
       stateStore
@@ -310,7 +313,7 @@ describe("adversarial fuzzing", () => {
     const github = createGitHubProvider(
       {
         clientId: "client",
-        clientSecret: "secret",
+        clientSecret: "google-secret-32-bytes-minimum",
         redirectUri: "https://sdk.test/oauth/github/callback",
       },
       stateStore

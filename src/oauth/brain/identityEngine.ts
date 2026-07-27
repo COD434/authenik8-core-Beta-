@@ -1,64 +1,156 @@
-import { IdentityEngine } from "../types";
-import { IdentityContext, IdentityResult } from "../types";
-import { identityPolicy } from "./identityPolicy";
 import { randomUUID } from "crypto";
-
-const auditLogs: any[] = [];
-
-type IdentityAdapter = {
-  findUserByEmail(email: string): Promise<any>;
-  findUserByProvider(provider: string, providerId: string): Promise<any>;
-  createUser(data: {
-    email: string;
-    provider: string;
-    providerId: string;
-  }): Promise<any>;
-  linkProvider(
-    userId: string,
-    provider: string,
-    providerId: string
-  ): Promise<void>;
-};
+import type { AuditEmitter } from "../../audit/types";
+import type {
+  IdentityContext,
+  IdentityEngine,
+  IdentityResult,
+  IdentityUser,
+  OAuthIdentityAdapter,
+} from "../types";
+import {
+  identityPolicy,
+  resolveIdentityPolicy,
+  type IdentityPolicy,
+} from "./identityPolicy";
+import {
+  normalizeIdentityEmail,
+  validateIdentityProvider,
+  validateIdentityUser,
+  validateIdentityUserId,
+} from "../identityValidation";
 
 type TokenService = {
-  signAccessToken(payload: any): Promise<string> | string;
-  generateRefreshToken(payload: any): Promise<string>;
+  issueTokens(payload: {
+    userId: string;
+    email: string;
+    sessionId: string;
+    role?: string;
+  }): Promise<{ accessToken: string; refreshToken: string }>;
 };
 
 export function createIdentityEngine(
-  adapter: IdentityAdapter,
-  tokenService: TokenService
+  adapter: OAuthIdentityAdapter,
+  tokenService: TokenService,
+  audit?: AuditEmitter,
+  policy: IdentityPolicy = identityPolicy,
 ): IdentityEngine {
+  const adapterMethods: Array<keyof OAuthIdentityAdapter> = [
+    "findUserById",
+    "findUserByEmail",
+    "findUserByProvider",
+    "createUser",
+    "linkProvider",
+  ];
+  if (
+    !adapter ||
+    adapterMethods.some((method) => typeof adapter[method] !== "function")
+  ) {
+    throw new Error("OAuth identity adapter is incomplete");
+  }
+  if (!tokenService || typeof tokenService.issueTokens !== "function") {
+    throw new Error("OAuth identity token service is incomplete");
+  }
+  const resolvedPolicy = resolveIdentityPolicy(policy);
+  const providerBelongsTo = (
+    userValue: unknown,
+    ctx: IdentityContext,
+  ): IdentityUser => {
+    const user = validateIdentityUser(userValue);
+    if (
+      !user.providers.some(
+        (entry) =>
+          entry.provider === ctx.provider &&
+          entry.providerId === ctx.providerId,
+      )
+    ) {
+      throw new Error("OAuth identity adapter provider mismatch");
+    }
+    return user;
+  };
+  const emailBelongsTo = (
+    userValue: unknown,
+    ctx: IdentityContext,
+  ): IdentityUser => {
+    const user = validateIdentityUser(userValue);
+    if (user.email !== ctx.email) {
+      throw new Error("OAuth identity adapter email mismatch");
+    }
+    return user;
+  };
+
+  const issueExistingLogin = async (
+    user: IdentityUser,
+  ): Promise<IdentityResult> => ({
+    type: "EXISTING_PROVIDER_LOGIN",
+    user,
+    ...(await issueTokensForUser(user, tokenService)),
+  });
+
+  const linkForLogin = async (
+    ctx: IdentityContext,
+    user: IdentityUser,
+    emailVerified: boolean,
+  ): Promise<IdentityResult> => {
+    if (!canAutoLink(emailVerified, resolvedPolicy)) {
+      return {
+        type: "LINK_REQUIRED",
+        message: "please link manually",
+        email: ctx.email,
+        provider: ctx.provider,
+      };
+    }
+
+    await adapter.linkProvider(user.id, ctx.provider, ctx.providerId);
+    const linkedUser = providerBelongsTo(
+      await adapter.findUserByProvider(ctx.provider, ctx.providerId),
+      ctx,
+    );
+    if (linkedUser.id !== user.id) {
+      throw new Error("OAuth provider link verification failed");
+    }
+
+    await audit?.emit({
+      type: "oauth.provider_linked",
+      severity: "info",
+      outcome: "success",
+      actor: { type: "user", id: user.id },
+      subject: { type: "user", id: user.id },
+      metadata: { provider: ctx.provider, method: "verified_email_policy" },
+    });
+
+    return issueExistingLogin(linkedUser);
+  };
+
   return {
     async resolveOAuth(args): Promise<IdentityResult> {
+      if (args.mode !== "login" && args.mode !== "link") {
+        throw new Error("OAuth identity mode is invalid");
+      }
+      if (typeof args.profile.email_verified !== "boolean") {
+        throw new Error("OAuth email verification claim is invalid");
+      }
+      const { provider, providerId } = validateIdentityProvider(
+        args.profile.provider,
+        args.profile.providerId,
+      );
       const ctx: IdentityContext = {
-        email: args.profile.email,
-        provider: args.profile.provider,
-        providerId: args.profile.providerId,
+        email: normalizeIdentityEmail(args.profile.email),
+        provider,
+        providerId,
         mode: args.mode,
-        userId: args.userId ?? undefined,
+        userId:
+          args.userId === null || args.userId === undefined
+            ? undefined
+            : validateIdentityUserId(args.userId),
       };
 
-      if (!ctx.email) {
-        throw new Error("OAuth profile missing email");
-      }
-
-      if (!ctx.providerId) {
-        throw new Error("Missing providerId");
-      }
-
-      const existingProvider = await adapter.findUserByProvider(
+      const providerResult = await adapter.findUserByProvider(
         ctx.provider,
-        ctx.providerId
+        ctx.providerId,
       );
-
-      if (existingProvider) {
-        return {
-          type: "EXISTING_PROVIDER_LOGIN",
-          user: existingProvider,
-          ...(await issueTokensForUser(existingProvider, tokenService)),
-        };
-      }
+      const existingProvider = providerResult
+        ? providerBelongsTo(providerResult, ctx)
+        : null;
 
       if (ctx.mode === "link") {
         if (!ctx.userId) {
@@ -68,90 +160,151 @@ export function createIdentityEngine(
           };
         }
 
-        await adapter.linkProvider(ctx.userId, ctx.provider, ctx.providerId);
-
-        const user =
-          (await adapter.findUserByEmail(ctx.email)) ??
-          (await adapter.findUserByProvider(ctx.provider, ctx.providerId));
-
-        if (!user) {
-          throw new Error("LINK_PROVIDER: user resolution failed");
+        const targetResult = await adapter.findUserById(ctx.userId);
+        const targetUser = targetResult
+          ? validateIdentityUser(targetResult)
+          : null;
+        if (!targetUser || targetUser.id !== ctx.userId) {
+          return {
+            type: "INVALID_LINK_REQUEST",
+            message: "Invalid authenticated user for linking",
+          };
         }
 
-        auditLogs.push({
-          userId: user.id,
-          action: "PROVIDER_LINKED",
-          timestamp: Date.now(),
+        if (existingProvider && existingProvider.id !== targetUser.id) {
+          await audit?.emit({
+            type: "oauth.provider_link_rejected",
+            severity: "warning",
+            outcome: "denied",
+            actor: { type: "user", id: targetUser.id },
+            subject: { type: "user", id: targetUser.id },
+            metadata: { provider: ctx.provider, reason: "already_linked" },
+          });
+          return {
+            type: "INVALID_LINK_REQUEST",
+            message: "Provider cannot be linked",
+          };
+        }
+
+        if (!existingProvider) {
+          await adapter.linkProvider(
+            targetUser.id,
+            ctx.provider,
+            ctx.providerId,
+          );
+        }
+
+        const linkedResult = await adapter.findUserById(targetUser.id);
+        const linkedUser = linkedResult
+          ? validateIdentityUser(linkedResult)
+          : null;
+        if (
+          !linkedUser ||
+          !linkedUser.providers.some(
+            (entry) =>
+              entry.provider === ctx.provider &&
+              entry.providerId === ctx.providerId,
+          )
+        ) {
+          throw new Error("OAuth provider link verification failed");
+        }
+
+        await audit?.emit({
+          type: "oauth.provider_linked",
+          severity: "info",
+          outcome: "success",
+          actor: { type: "user", id: linkedUser.id },
+          subject: { type: "user", id: linkedUser.id },
+          metadata: { provider: ctx.provider, method: "authenticated_link" },
         });
 
         return {
           type: "LINK_PROVIDER",
-          user,
+          user: linkedUser,
           success: true,
         };
       }
 
-      const existingUser = await adapter.findUserByEmail(ctx.email);
-
-      if (existingUser) {
-        if (!canAutoLink(args.profile.email_verified)) {
-          return {
-            type: "LINK_REQUIRED",
-            message: "please link manually",
-            email: ctx.email,
-            provider: ctx.provider,
-          };
-        }
-
-        return {
-          type: "EXISTING_PROVIDER_LOGIN",
-          user: existingUser,
-          ...(await issueTokensForUser(existingUser, tokenService)),
-        };
+      if (existingProvider) {
+        return issueExistingLogin(existingProvider);
       }
 
-      const user = await adapter.createUser({
+      const emailResult = await adapter.findUserByEmail(ctx.email);
+      const existingUser = emailResult
+        ? emailBelongsTo(emailResult, ctx)
+        : null;
+      if (existingUser) {
+        return linkForLogin(
+          ctx,
+          existingUser,
+          args.profile.email_verified,
+        );
+      }
+
+      const creation = await adapter.createUser({
         email: ctx.email,
         provider: ctx.provider,
         providerId: ctx.providerId,
       });
+      if (
+        !creation ||
+        (creation.status !== "created" &&
+          creation.status !== "existing-provider" &&
+          creation.status !== "existing-email")
+      ) {
+        throw new Error("OAuth identity adapter returned an invalid result");
+      }
 
-      auditLogs.push({
-        userId: user.id,
-        action: "USER_CREATED",
-        timestamp: Date.now(),
+      if (creation.status === "existing-provider") {
+        return issueExistingLogin(providerBelongsTo(creation.user, ctx));
+      }
+      if (creation.status === "existing-email") {
+        return linkForLogin(
+          ctx,
+          emailBelongsTo(creation.user, ctx),
+          args.profile.email_verified,
+        );
+      }
+      const createdUser = providerBelongsTo(
+        emailBelongsTo(creation.user, ctx),
+        ctx,
+      );
+
+      await audit?.emit({
+        type: "oauth.user_created",
+        severity: "info",
+        outcome: "success",
+        actor: { type: "system" },
+        subject: { type: "user", id: createdUser.id },
+        metadata: { provider: ctx.provider },
       });
 
       return {
         type: "NEW_USER_CREATION",
-        user,
-        ...(await issueTokensForUser(user, tokenService)),
+        user: createdUser,
+        ...(await issueTokensForUser(createdUser, tokenService)),
       };
     },
   };
 }
 
-const canAutoLink = (emailVerified: boolean | string): boolean => {
-  const isVerified = emailVerified === true || emailVerified === "true";
+const canAutoLink = (
+  emailVerified: boolean,
+  policy: IdentityPolicy,
+): boolean => {
   return (
-    (isVerified && identityPolicy.autoLinkOnVerifiedEmailMatch) ||
-    (!isVerified && identityPolicy.allowUnverifiedAutoLink)
+    (emailVerified === true && policy.autoLinkOnVerifiedEmailMatch) ||
+    (emailVerified === false && policy.allowUnverifiedAutoLink)
   );
 };
 
 const issueTokensForUser = async (
-  user: { id: string; email: string; role?: string },
-  tokenService: TokenService
-) => {
-  const payload = {
+  user: IdentityUser,
+  tokenService: TokenService,
+) =>
+  tokenService.issueTokens({
     userId: user.id,
     email: user.email,
     sessionId: randomUUID(),
     ...(typeof user.role === "string" ? { role: user.role.toLowerCase() } : {}),
-  };
-
-  return {
-    accessToken: await tokenService.signAccessToken(payload),
-    refreshToken: await tokenService.generateRefreshToken(payload),
-  };
-};
+  });

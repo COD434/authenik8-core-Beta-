@@ -1,168 +1,107 @@
-import { describe, it, expect, beforeEach } from 'vitest';
-import { memoryAdapter } from '../../oauth/adapters/memoryAdapter';
+import { beforeEach, describe, expect, it } from "vitest";
+import { memoryAdapter } from "../../oauth/adapters/memoryAdapter";
 
-const mockEmail = 'test@example.com';
-const mockProvider = 'google';
-const mockProviderId = 'google-123';
+describe("memoryAdapter", () => {
+  beforeEach(() => memoryAdapter.reset());
 
-beforeEach(() => {
-  memoryAdapter.reset();
-});
-
-describe('findUserByEmail', () => {
-  it('returns null when no users exist', async () => {
-    const result = await memoryAdapter.findUserByEmail(mockEmail);
-    expect(result).toBeNull();
-  });
-
-  it('returns the user when email matches', async () => {
+  it("creates, normalizes, and resolves a user through every index", async () => {
     const created = await memoryAdapter.createUser({
-      email: mockEmail,
-      provider: mockProvider,
-      providerId: mockProviderId,
+      email: " Test@Example.COM ",
+      provider: "google",
+      providerId: "google-123",
     });
 
-    const found = await memoryAdapter.findUserByEmail(mockEmail);
-    expect(found).toEqual(created);
-  });
-
-  it('returns null when email does not match', async () => {
-    await memoryAdapter.createUser({
-      email: mockEmail,
-      provider: mockProvider,
-      providerId: mockProviderId,
-    });
-
-    const found = await memoryAdapter.findUserByEmail('other@example.com');
-    expect(found).toBeNull();
-  });
-});
-
-describe('findUserByProvider', () => {
-  it('returns null when no users exist', async () => {
-    const result = await memoryAdapter.findUserByProvider(mockProvider, mockProviderId);
-    expect(result).toBeNull();
-  });
-
-  it('returns the user when provider and providerId match', async () => {
-    const created = await memoryAdapter.createUser({
-      email: mockEmail,
-      provider: mockProvider,
-      providerId: mockProviderId,
-    });
-
-    const found = await memoryAdapter.findUserByProvider(mockProvider, mockProviderId);
-    expect(found).toEqual(created);
-  });
-
-  it('returns null when provider matches but providerId does not', async () => {
-    await memoryAdapter.createUser({
-      email: mockEmail,
-      provider: mockProvider,
-      providerId: mockProviderId,
-    });
-
-    const found = await memoryAdapter.findUserByProvider(mockProvider, 'wrong-id');
-    expect(found).toBeNull();
-  });
-
-  it('returns null when providerId matches but provider does not', async () => {
-    await memoryAdapter.createUser({
-      email: mockEmail,
-      provider: mockProvider,
-      providerId: mockProviderId,
-    });
-
-    const found = await memoryAdapter.findUserByProvider('github', mockProviderId);
-    expect(found).toBeNull();
-  });
-});
-
-describe('createUser', () => {
-  it('returns a user with a generated id', async () => {
-    const user = await memoryAdapter.createUser({
-      email: mockEmail,
-      provider: mockProvider,
-      providerId: mockProviderId,
-    });
-
-    expect(user.id).toBeDefined();
-    expect(user.id).toBeTypeOf('string');
-  });
-
-  it('stores the correct email and provider', async () => {
-    const user = await memoryAdapter.createUser({
-      email: mockEmail,
-      provider: mockProvider,
-      providerId: mockProviderId,
-    });
-
-    expect(user.email).toBe(mockEmail);
-    expect(user.providers).toEqual([{ provider: mockProvider, providerId: mockProviderId }]);
-  });
-
-  it('generates unique ids for different users', async () => {
-    const a = await memoryAdapter.createUser({ email: 'a@example.com', provider: mockProvider, providerId: 'id-a' });
-    const b = await memoryAdapter.createUser({ email: 'b@example.com', provider: mockProvider, providerId: 'id-b' });
-
-    expect(a.id).not.toBe(b.id);
-  });
-});
-
-describe('linkProvider', () => {
-  it('throws if user does not exist', async () => {
+    expect(created.status).toBe("created");
+    expect(created.user.email).toBe("test@example.com");
+    await expect(memoryAdapter.findUserById(created.user.id)).resolves.toEqual(
+      created.user,
+    );
     await expect(
-      memoryAdapter.linkProvider('nonexistent-id', mockProvider, mockProviderId)
-    ).rejects.toThrow('User not found: nonexistent-id');
+      memoryAdapter.findUserByEmail("TEST@example.com"),
+    ).resolves.toEqual(created.user);
+    await expect(
+      memoryAdapter.findUserByProvider("google", "google-123"),
+    ).resolves.toEqual(created.user);
   });
 
-  it('appends the new provider to the user', async () => {
-    const user = await memoryAdapter.createUser({
-      email: mockEmail,
-      provider: mockProvider,
-      providerId: mockProviderId,
+  it("classifies provider and email collisions without creating duplicates", async () => {
+    const first = await memoryAdapter.createUser({
+      email: "one@example.com",
+      provider: "google",
+      providerId: "provider-1",
+    });
+    const providerCollision = await memoryAdapter.createUser({
+      email: "other@example.com",
+      provider: "google",
+      providerId: "provider-1",
+    });
+    const emailCollision = await memoryAdapter.createUser({
+      email: "ONE@example.com",
+      provider: "github",
+      providerId: "provider-2",
     });
 
-    await memoryAdapter.linkProvider(user.id, 'github', 'github-456');
-
-    const found = await memoryAdapter.findUserByEmail(mockEmail);
-    expect(found?.providers).toHaveLength(2);
-    expect(found?.providers).toContainEqual({ provider: 'github', providerId: 'github-456' });
+    expect(first.status).toBe("created");
+    expect(providerCollision.status).toBe("existing-provider");
+    expect(emailCollision.status).toBe("existing-email");
+    expect(memoryAdapter.dump()).toHaveLength(1);
   });
 
-  it('allows finding user by the newly linked provider', async () => {
-    const user = await memoryAdapter.createUser({
-      email: mockEmail,
-      provider: mockProvider,
-      providerId: mockProviderId,
+  it("links idempotently and rejects a provider owned by another user", async () => {
+    const first = (
+      await memoryAdapter.createUser({
+        email: "one@example.com",
+        provider: "google",
+        providerId: "google-1",
+      })
+    ).user;
+    const second = (
+      await memoryAdapter.createUser({
+        email: "two@example.com",
+        provider: "github",
+        providerId: "github-2",
+      })
+    ).user;
+
+    await memoryAdapter.linkProvider(first.id, "github", "github-1");
+    await memoryAdapter.linkProvider(first.id, "github", "github-1");
+    expect((await memoryAdapter.findUserById(first.id))?.providers).toHaveLength(
+      2,
+    );
+    await expect(
+      memoryAdapter.linkProvider(second.id, "google", "google-1"),
+    ).rejects.toThrow(/already linked/i);
+  });
+
+  it("returns detached values so callers cannot mutate stored identity state", async () => {
+    const created = await memoryAdapter.createUser({
+      email: "one@example.com",
+      provider: "google",
+      providerId: "google-1",
     });
+    created.user.providers.push({ provider: "github", providerId: "injected" });
 
-    await memoryAdapter.linkProvider(user.id, 'github', 'github-456');
-
-    const found = await memoryAdapter.findUserByProvider('github', 'github-456');
-    expect(found?.id).toBe(user.id);
-  });
-});
-
-describe('dump', () => {
-  it('returns empty array when store is empty', () => {
-    expect(memoryAdapter.dump()).toEqual([]);
+    expect((await memoryAdapter.findUserById(created.user.id))?.providers).toEqual(
+      [{ provider: "google", providerId: "google-1" }],
+    );
   });
 
-  it('returns all created users', async () => {
-    await memoryAdapter.createUser({ email: 'a@example.com', provider: mockProvider, providerId: 'id-a' });
-    await memoryAdapter.createUser({ email: 'b@example.com', provider: mockProvider, providerId: 'id-b' });
+  it("bounds the number of linked providers per identity", async () => {
+    const created = await memoryAdapter.createUser({
+      email: "one@example.com",
+      provider: "google",
+      providerId: "google-1",
+    });
+    for (let index = 1; index < 32; index += 1) {
+      await memoryAdapter.linkProvider(
+        created.user.id,
+        "github",
+        `github-${index}`,
+      );
+    }
 
-    expect(memoryAdapter.dump()).toHaveLength(2);
-  });
-});
-
-describe('reset', () => {
-  it('clears all users from the store', async () => {
-    await memoryAdapter.createUser({ email: mockEmail, provider: mockProvider, providerId: mockProviderId });
-    memoryAdapter.reset();
-
-    expect(memoryAdapter.dump()).toHaveLength(0);
-    expect(await memoryAdapter.findUserByEmail(mockEmail)).toBeNull();
+    await expect(
+      memoryAdapter.linkProvider(created.user.id, "github", "github-overflow"),
+    ).rejects.toThrow(/provider limit/i);
   });
 });

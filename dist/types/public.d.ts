@@ -1,21 +1,31 @@
-import type { RequestHandler } from "express";
+import type { Request, RequestHandler, Response } from "express";
 import type { JSONWebKeySet } from "jose" with { "resolution-mode": "import" };
+import type { Redis } from "ioredis";
 import type { JwtPayload } from "../auth/jwtAuth";
+import type { RefreshResult } from "../auth/refreshService";
 import type { SessionMetadata } from "../auth/sessionStore";
-import { TokenPayload, TokenPair } from "./tokens";
-import { OAuthCallbackResult } from "../oauth/types";
 import type { AgentIdentityApi } from "../agent/types";
+import type { AuditEmitter } from "../audit/types";
+import type { TenantResolver } from "../authorization/types";
+import type { OAuthCallbackResult } from "../oauth/types";
+import type { SessionObservation, SessionRiskReporter } from "../risk/types";
+import type { TokenPayload, TokenPair } from "./tokens";
 type GitHubProvider = {
-    redirect: (req: any, res: any, mode?: "login" | "link") => Promise<void>;
-    handleCallback: (req: any) => Promise<OAuthCallbackResult>;
+    redirect: (req: Request, res: Response, mode?: "login" | "link") => Promise<void>;
+    handleCallback: (req: Request) => Promise<OAuthCallbackResult>;
 };
 type GoogleProvider = {
-    redirect: (req: any, res: any, mode?: "login" | "link") => Promise<void>;
-    handleCallback: (req: any) => Promise<OAuthCallbackResult>;
+    redirect: (req: Request, res: Response, mode?: "login" | "link") => Promise<void>;
+    handleCallback: (req: Request) => Promise<OAuthCallbackResult>;
 };
 export interface Authenik8Instance {
-    signToken: (payload: any) => Promise<string>;
+    signToken: (payload: Record<string, unknown> & {
+        userId?: string;
+        sessionId?: string;
+    }, observation?: SessionObservation) => Promise<string>;
     verifyToken: (token: string) => Promise<JwtPayload | null>;
+    /** Verifies signature, expiry, current Redis session, and quarantine state. */
+    verifyActiveToken: (token: string) => Promise<JwtPayload | null>;
     requireAuth: RequestHandler;
     guestToken: () => Promise<string>;
     getJwks: () => JSONWebKeySet;
@@ -23,22 +33,33 @@ export interface Authenik8Instance {
     revokeSession: (userId: string, sessionId: string) => Promise<void>;
     revokeAllSessions: (userId: string) => Promise<void>;
     agent?: AgentIdentityApi;
-    refreshToken: (token: string) => Promise<any>;
-    generateRefreshToken: (payload: any) => Promise<string>;
-    rateLimit: any;
-    ipWhitelist: any;
-    helmet: any;
-    addIP: (ip: string) => Promise<void>;
+    audit: AuditEmitter;
+    risk: SessionRiskReporter;
+    refreshToken: (token: string) => Promise<RefreshResult>;
+    generateRefreshToken: (payload: {
+        userId: string;
+        email: string;
+        sessionId?: string;
+    }) => Promise<string>;
+    rateLimit: RequestHandler;
+    ipWhitelist: RequestHandler;
+    helmet: RequestHandler;
+    addIP: (ip: string, ttlSeconds?: number) => Promise<void>;
     removeIP: (ip: string) => Promise<void>;
     listIPs: () => Promise<string[]>;
-    requireAdmin: any;
-    incognito: any;
-    redisclient?: any;
+    /** @deprecated Prefer requireRole("admin"), which composes with tenant policy. */
+    requireAdmin: RequestHandler;
+    requireRole: (...roles: string[]) => RequestHandler;
+    requirePermission: (...permissions: string[]) => RequestHandler;
+    requireScope: (...scopes: string[]) => RequestHandler;
+    requireTenant: (resolveTenant?: TenantResolver) => RequestHandler;
+    incognito: RequestHandler;
+    redisclient?: Redis;
     oauth?: {
         google?: GoogleProvider;
         github?: GitHubProvider;
     };
-    issueTokens: (payload: TokenPayload) => Promise<TokenPair>;
+    issueTokens: (payload: TokenPayload, observation?: SessionObservation) => Promise<TokenPair>;
 }
 export {};
 //# sourceMappingURL=public.d.ts.map

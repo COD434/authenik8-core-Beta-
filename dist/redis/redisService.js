@@ -4,10 +4,8 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.getRedisConfig = exports.validateRedisConfig = exports.initializeRedisClient = exports.setupRedis = void 0;
-const dotenv_1 = __importDefault(require("dotenv"));
 const connect_redis_1 = require("connect-redis");
 const ioredis_1 = __importDefault(require("ioredis"));
-dotenv_1.default.config();
 let redisClientInstance = null;
 const DEFAULT_REDIS_CONFIG = {
     host: process.env.REDIS_HOST ?? "127.0.0.1",
@@ -27,6 +25,23 @@ const validateRedisConfig = (config) => {
         !config.url.startsWith("redis://") &&
         !config.url.startsWith("rediss://")) {
         throw new Error("Redis URL must use 'redis://' or 'rediss://' protocol");
+    }
+    if (config.port !== undefined &&
+        (!Number.isSafeInteger(config.port) ||
+            config.port < 1 ||
+            config.port > 65535)) {
+        throw new Error("Redis port must be an integer between 1 and 65535");
+    }
+    if (!Number.isSafeInteger(config.connectTimeout) ||
+        config.connectTimeout < 100 ||
+        config.connectTimeout > 120000) {
+        throw new Error("Redis connectTimeout must be between 100 and 120000 milliseconds");
+    }
+    if (config.maxRetriesPerRequest !== undefined &&
+        (!Number.isSafeInteger(config.maxRetriesPerRequest) ||
+            config.maxRetriesPerRequest < 0 ||
+            config.maxRetriesPerRequest > 100)) {
+        throw new Error("Redis maxRetriesPerRequest must be between 0 and 100");
     }
 };
 exports.validateRedisConfig = validateRedisConfig;

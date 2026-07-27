@@ -16,10 +16,11 @@ describe("Refresh Token Concurrency (Integration)", () => {
     userId = redisHelper.createUserId("user");
 
     auth = await createAuthenik8({
-      jwtSecret: "test-secret",
-      refreshSecret: "refresh-secret",
+      jwtSecret: "test-secret-32-bytes-minimum-value",
+      refreshSecret: "refresh-secret-32-bytes-minimum-value",
       jwtExpiry: "15m",
-      redis: redisHelper.redis
+      redis: redisHelper.redis,
+      redisKeyPrefix: redisHelper.keyPrefix,
     });
 
     app = express();

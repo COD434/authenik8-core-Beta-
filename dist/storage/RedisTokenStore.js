@@ -1,6 +1,8 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.RedisTokenStore = void 0;
+const keyNamespace_1 = require("../redis/keyNamespace");
+const safeString_1 = require("../utility/safeString");
 const COMPARE_AND_SET_SCRIPT = `
 if redis.call("GET", KEYS[1]) == ARGV[1] then
   if ARGV[3] ~= "" then
@@ -13,9 +15,9 @@ end
 return 0
 `;
 class RedisTokenStore {
-    constructor(redis, _debug = false) {
+    constructor(redis, _debug = false, prefix = "auth:v1") {
         this.redis = redis;
-        this.prefix = "auth:v1";
+        this.prefix = (0, keyNamespace_1.validateRedisKeyPrefix)(prefix);
     }
     async storeRefreshToken(token, userId, ttl) {
         await this.redis.set(this.key("refresh", userId), token, "EX", ttl);
@@ -69,6 +71,12 @@ class RedisTokenStore {
         return this.redis.get(key);
     }
     key(...parts) {
+        if (parts.some((part) => typeof part !== "string" ||
+            part.length === 0 ||
+            part.length > 256 ||
+            (0, safeString_1.containsControlCharacter)(part))) {
+            throw new Error("Redis token-store key component is invalid");
+        }
         return `${this.prefix}:${parts.join(":")}`;
     }
 }

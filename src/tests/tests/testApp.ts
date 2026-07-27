@@ -11,10 +11,11 @@ export const createTestApp = async () => {
   };
 
   const auth = await createAuthenik8({
-    jwtSecret: "test-secret",
-    refreshSecret: "refresh-secret",
+    jwtSecret: "test-secret-32-bytes-minimum-value",
+    refreshSecret: "refresh-secret-32-bytes-minimum-value",
     jwtExpiry: "15m",
-    redis: redisHelper.redis
+    redis: redisHelper.redis,
+    redisKeyPrefix: redisHelper.keyPrefix,
   });
 
   const app = express();

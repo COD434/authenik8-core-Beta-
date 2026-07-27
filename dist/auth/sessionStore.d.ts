@@ -5,7 +5,9 @@ export interface SessionMetadata {
     createdAt: number;
 }
 export type StoredSession = SessionMetadata & {
-    token: string;
+    tokenHash?: string;
+    /** Read-only migration support for sessions written before token hashing. */
+    token?: string;
 };
 export type SessionRedisClient = {
     hget?: (key: string, field: string) => Promise<string | null>;
@@ -20,6 +22,7 @@ export declare class SessionStore {
     private readonly namespace;
     constructor(redis?: SessionRedisClient | undefined, namespace?: string);
     private sessionKey;
+    private sessionField;
     list(principalId: string): Promise<SessionMetadata[]>;
     get(principalId: string, sessionId: string): Promise<StoredSession | null>;
     upsert(principalId: string, token: string, metadata: SessionMetadata, ttlSeconds: number): Promise<void>;
@@ -28,4 +31,5 @@ export declare class SessionStore {
     revoke(principalId: string, sessionId: string): Promise<void>;
     revokeAll(principalId: string): Promise<void>;
 }
+export declare const sessionTokenMatches: (session: StoredSession, token: string) => boolean;
 //# sourceMappingURL=sessionStore.d.ts.map

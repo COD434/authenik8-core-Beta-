@@ -1,129 +1,53 @@
-import { SecurityModule } from "../../security/ipService";
+import type { Request } from "express";
+import { describe, expect, it } from "vitest";
+import {
+  createClientIpResolver,
+  getClientIp,
+  normalizeIpOrCidr,
+} from "../../security/requestContext";
 
-type FakeRedis = {
-  sets: Map<string, Set<string>>;
-  ttlKeys: Set<string>;
-  sismember: (key: string, value: string) => Promise<number>;
-  smembers: (key: string) => Promise<string[]>;
-  sadd: (key: string, value: string) => Promise<void>;
-  srem: (key: string, value: string) => Promise<void>;
-  set: (key: string, value: string, mode: string, ttl: number) => Promise<void>;
-  del: (key: string) => Promise<void>;
-  exists: (key: string) => Promise<number>;
-  on: () => void;
-};
+const request = (remoteAddress: string, forwarded?: string) =>
+  ({
+    socket: { remoteAddress },
+    headers: forwarded ? { "x-forwarded-for": forwarded } : {},
+    // A preprocessed Express value must never override the actual socket.
+    ip: "203.0.113.250",
+  }) as unknown as Request;
 
-const createFakeRedis = (): FakeRedis => {
-  const sets = new Map<string, Set<string>>();
-  const ttlKeys = new Set<string>();
-
-  return {
-    sets,
-    ttlKeys,
-    async sismember(key, value) {
-      return sets.get(key)?.has(value) ? 1 : 0;
-    },
-    async smembers(key) {
-      return [...(sets.get(key) ?? new Set<string>())];
-    },
-    async sadd(key, value) {
-      if (!sets.has(key)) {
-        sets.set(key, new Set());
-      }
-      sets.get(key)?.add(value);
-    },
-    async srem(key, value) {
-      sets.get(key)?.delete(value);
-    },
-    async set(key) {
-      ttlKeys.add(key);
-    },
-    async del(key) {
-      ttlKeys.delete(key);
-    },
-    async exists(key) {
-      return ttlKeys.has(key) ? 1 : 0;
-    },
-    on() {},
-  };
-};
-
-describe("SecurityModule whitelist middleware", () => {
-  test("does not trust x-forwarded-for by default", async () => {
-    const redis = createFakeRedis();
-    const security = new SecurityModule({
-      redisClient: redis as any,
-      rateLimiterEnabled: false,
-      whiteListEnabled: true,
-    });
-
-    await security.addIP("203.0.113.10");
-
-    const req = {
-      headers: {
-        "x-forwarded-for": "203.0.113.10",
-      },
-      ip: "198.51.100.25",
-      socket: {
-        remoteAddress: "198.51.100.25",
-      },
-    } as any;
-    const res = {
-      statusCode: 200,
-      body: null as any,
-      status(code: number) {
-        this.statusCode = code;
-        return this;
-      },
-      json(payload: unknown) {
-        this.body = payload;
-        return this;
-      },
-    };
-    let nextCalled = false;
-
-    await security.whiteListMiddleware()(req, res as any, () => {
-      nextCalled = true;
-    });
-
-    expect(nextCalled).toBe(false);
-    expect(res.statusCode).toBe(403);
+describe("request network context", () => {
+  it("uses the socket peer and never Express req.ip by default", () => {
+    expect(getClientIp(request("198.51.100.20", "203.0.113.10"))).toBe(
+      "198.51.100.20",
+    );
   });
 
-  test("can trust x-forwarded-for when explicitly enabled", async () => {
-    const redis = createFakeRedis();
-    const security = new SecurityModule({
-      redisClient: redis as any,
-      rateLimiterEnabled: false,
-      whiteListEnabled: true,
-      trustProxyHeaders: true,
-    });
+  it("normalizes IPv4-mapped IPv6 and network addresses", () => {
+    expect(getClientIp(request("::ffff:192.0.2.10"))).toBe("192.0.2.10");
+    expect(normalizeIpOrCidr("10.20.30.40/8")).toBe("10.0.0.0/8");
+  });
 
-    await security.addIP("203.0.113.10");
+  it("returns unknown for malformed or oversized trusted forwarding chains", () => {
+    const resolve = createClientIpResolver(["10.0.0.0/8"]);
+    expect(resolve(request("10.0.0.1", "malformed"))).toBe("unknown");
+    expect(
+      resolve(
+        request(
+          "10.0.0.1",
+          Array.from({ length: 33 }, () => "10.0.0.2").join(","),
+        ),
+      ),
+    ).toBe("unknown");
+    expect(
+      resolve({
+        socket: { remoteAddress: "10.0.0.1" },
+        headers: { "x-forwarded-for": ["203.0.113.1", "10.0.0.2"] },
+      } as unknown as Request),
+    ).toBe("unknown");
+  });
 
-    const req = {
-      headers: {
-        "x-forwarded-for": "203.0.113.10",
-      },
-      ip: "198.51.100.25",
-      socket: {
-        remoteAddress: "198.51.100.25",
-      },
-    } as any;
-    const res = {
-      status() {
-        return this;
-      },
-      json() {
-        return this;
-      },
-    };
-    let nextCalled = false;
-
-    await security.whiteListMiddleware()(req, res as any, () => {
-      nextCalled = true;
-    });
-
-    expect(nextCalled).toBe(true);
+  it("validates every configured trusted proxy network", () => {
+    expect(() => createClientIpResolver(["not-a-cidr"])).toThrow(
+      /invalid trusted proxy CIDR/i,
+    );
   });
 });

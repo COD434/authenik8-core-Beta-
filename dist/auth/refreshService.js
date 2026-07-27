@@ -5,8 +5,41 @@ const crypto_1 = require("crypto");
 const jwk_1 = require("./jwk");
 const sessionStore_1 = require("./sessionStore");
 const lockHelper_1 = require("../utility/lockHelper");
+const tokenFingerprint_1 = require("./tokenFingerprint");
+const keyNamespace_1 = require("../redis/keyNamespace");
+const safeString_1 = require("../utility/safeString");
 const DEFAULT_REFRESH_TTL_SECONDS = 60 * 60 * 24 * 7;
-const REFRESH_LOCK_TTL_MS = 5000;
+const MAX_REFRESH_TTL_SECONDS = 31 * 24 * 60 * 60;
+const REFRESH_LOCK_TTL_MS = 30000;
+const MAX_REFRESH_IDENTIFIER_LENGTH = 256;
+const REFRESH_REVOCATION_BATCH_SIZE = 100;
+const MAX_FALLBACK_SESSION_IDS = 10000;
+const TOKEN_FINGERPRINT_PATTERN = /^[A-Za-z0-9_-]{43}$/;
+const validateRefreshIdentifier = (value, label) => {
+    if (typeof value !== "string" ||
+        value.length === 0 ||
+        value.length > MAX_REFRESH_IDENTIFIER_LENGTH ||
+        (0, safeString_1.containsControlCharacter)(value)) {
+        throw new Error(`${label} must contain between 1 and ${MAX_REFRESH_IDENTIFIER_LENGTH} safe characters`);
+    }
+    return value;
+};
+const pairDigest = (first, second) => (0, crypto_1.createHash)("sha256")
+    .update(first)
+    .update("\0")
+    .update(second)
+    .digest("base64url");
+const refreshTokenMatches = (storedToken, presentedToken) => {
+    if (typeof storedToken !== "string" ||
+        storedToken.length === 0 ||
+        storedToken.length > 16 * 1024) {
+        return false;
+    }
+    const expectedFingerprint = TOKEN_FINGERPRINT_PATTERN.test(storedToken)
+        ? storedToken
+        : (0, tokenFingerprint_1.tokenFingerprint)(storedToken);
+    return (0, tokenFingerprint_1.tokenFingerprintMatches)(expectedFingerprint, presentedToken);
+};
 class MissingTokenError extends Error {
     constructor(message = "Missing Token") {
         super(message);
@@ -23,13 +56,29 @@ class InvalidTokenError extends Error {
 exports.InvalidTokenError = InvalidTokenError;
 class RefreshService {
     constructor(options) {
+        if (options.rotateRefreshTokens !== undefined &&
+            typeof options.rotateRefreshTokens !== "boolean") {
+            throw new Error("rotateRefreshTokens must be a boolean");
+        }
+        if (!options.tokenStore || typeof options.tokenStore.get !== "function") {
+            throw new Error("TokenStore must implement get()");
+        }
+        if (options.rotateRefreshTokens === true &&
+            typeof options.tokenStore.compareAndSet !== "function") {
+            throw new Error("TokenStore must implement compareAndSet for atomic refresh rotation");
+        }
         this.tokenStore = options.tokenStore;
         this.redisClient = options.redisClient;
         this.accessTokenSigner = options.accessTokenSigner;
         this.rotateRefreshTokens = options.rotateRefreshTokens ?? false;
-        this.refreshTokenExpiry = options.refreshTokenExpiry ?? "7d";
+        this.refreshTokenTtl = (0, jwk_1.normalizeTokenLifetime)(options.refreshTokenExpiry ?? "7d", "refreshTokenExpiry", 60, MAX_REFRESH_TTL_SECONDS);
+        this.audit = options.audit;
+        this.risk = options.risk;
+        this.keyPrefix = options.keyPrefix
+            ? (0, keyNamespace_1.validateRedisKeyPrefix)(options.keyPrefix)
+            : "";
         this.lock = new lockHelper_1.RedisLock(options.redisClient);
-        this.sessionStore = new sessionStore_1.SessionStore(options.redisClient);
+        this.sessionStore = new sessionStore_1.SessionStore(options.redisClient, this.scoped("sessions"));
         this.refreshKeys = new jwk_1.JwtKeyRing({
             legacySecret: options.refreshTokenSecret,
             issuer: options.issuer,
@@ -37,18 +86,46 @@ class RefreshService {
         });
     }
     async generateRefreshToken(payload) {
-        if (!payload.userId) {
-            throw new Error("generateRefreshToken: payload.userId is missing");
+        const userId = validateRefreshIdentifier(payload.userId, "generateRefreshToken: payload.userId");
+        if (typeof payload.email !== "string" ||
+            payload.email.length === 0 ||
+            payload.email.length > 254 ||
+            (0, safeString_1.containsControlCharacter)(payload.email)) {
+            throw new Error("generateRefreshToken: payload.email is invalid");
         }
+        const sessionId = payload.sessionId === undefined
+            ? (0, crypto_1.randomUUID)()
+            : validateRefreshIdentifier(payload.sessionId, "generateRefreshToken: payload.sessionId");
         const tokenPayload = {
-            userId: payload.userId,
+            userId,
             email: payload.email,
-            sessionId: payload.sessionId ?? (0, crypto_1.randomUUID)(),
+            sessionId,
         };
         const token = await this.signRefreshToken(tokenPayload);
+        const key = this.refreshKey(tokenPayload.userId, tokenPayload.sessionId);
         if (this.tokenStore.set) {
-            await this.tokenStore.set(this.refreshKey(tokenPayload.userId, tokenPayload.sessionId), token, this.refreshTokenTtlSeconds());
-            await this.trackRefreshFamily(tokenPayload.userId, tokenPayload.sessionId);
+            await this.tokenStore.set(key, (0, tokenFingerprint_1.tokenFingerprint)(token), this.refreshTokenTtlSeconds());
+            try {
+                await this.trackRefreshFamily(tokenPayload.userId, tokenPayload.sessionId);
+            }
+            catch (error) {
+                await this.tokenStore.del?.(key);
+                throw error;
+            }
+        }
+        try {
+            await this.audit?.emit({
+                type: "refresh_token.issued",
+                severity: "info",
+                outcome: "success",
+                actor: { type: "system" },
+                subject: { type: "user", id: tokenPayload.userId },
+                sessionId: tokenPayload.sessionId,
+            });
+        }
+        catch (error) {
+            await this.revokeRefreshFamily(tokenPayload.userId, tokenPayload.sessionId);
+            throw error;
         }
         return token;
     }
@@ -56,20 +133,53 @@ class RefreshService {
         if (!refreshToken)
             throw new MissingTokenError();
         const decoded = await this.verifyRefreshToken(refreshToken);
+        if (await this.risk?.isQuarantined(this.principal(decoded.userId, decoded.sessionId))) {
+            throw new InvalidTokenError("Session quarantined");
+        }
         const lockKey = this.lockKey(decoded.userId, decoded.sessionId);
         const lockValue = await this.lock.acquire(lockKey, REFRESH_LOCK_TTL_MS);
         if (!lockValue) {
+            await this.reportConcurrentRefresh(decoded);
             throw new InvalidTokenError("Concurrent refresh detected");
         }
         try {
             const key = this.refreshKey(decoded.userId, decoded.sessionId);
             const storedToken = await this.tokenStore.get(key);
-            if (storedToken !== refreshToken) {
-                await this.revokeRefreshFamily(decoded.userId, decoded.sessionId);
+            if (!refreshTokenMatches(storedToken, refreshToken)) {
+                try {
+                    await this.risk?.report({
+                        type: "refresh_replay",
+                        principal: this.principal(decoded.userId, decoded.sessionId),
+                    });
+                    await this.audit?.emit({
+                        type: "refresh_token.replay_detected",
+                        severity: "critical",
+                        outcome: "denied",
+                        actor: { type: "user", id: decoded.userId },
+                        sessionId: decoded.sessionId,
+                    });
+                }
+                finally {
+                    await this.revokeRefreshFamily(decoded.userId, decoded.sessionId);
+                }
                 throw new InvalidTokenError();
             }
-            const newRefreshToken = await this.rotateTokenIfEnabled(key, refreshToken, decoded);
-            const newAccessToken = await this.accessTokenSigner(decoded);
+            const newRefreshToken = await this.rotateTokenIfEnabled(key, storedToken, decoded);
+            let newAccessToken;
+            try {
+                newAccessToken = await this.accessTokenSigner(decoded);
+                await this.audit?.emit({
+                    type: "refresh_token.rotated",
+                    severity: "info",
+                    outcome: "success",
+                    actor: { type: "user", id: decoded.userId },
+                    sessionId: decoded.sessionId,
+                });
+            }
+            catch (error) {
+                await this.revokeRefreshFamily(decoded.userId, decoded.sessionId);
+                throw error;
+            }
             return {
                 accessToken: newAccessToken,
                 refreshToken: newRefreshToken ?? refreshToken,
@@ -80,34 +190,69 @@ class RefreshService {
         }
     }
     async revokeSession(userId, sessionId) {
-        await this.revokeRefreshFamily(userId, sessionId);
+        const validUserId = validateRefreshIdentifier(userId, "userId");
+        const validSessionId = validateRefreshIdentifier(sessionId, "sessionId");
+        await this.revokeRefreshFamily(validUserId, validSessionId);
+        await this.audit?.emit({
+            type: "session.revoked",
+            severity: "warning",
+            outcome: "success",
+            actor: { type: "system" },
+            subject: { type: "user", id: validUserId },
+            sessionId: validSessionId,
+        });
     }
     async revokeAllSessions(userId, fallbackSessionIds = []) {
+        const validUserId = validateRefreshIdentifier(userId, "userId");
+        if (fallbackSessionIds.length > MAX_FALLBACK_SESSION_IDS) {
+            throw new Error(`fallbackSessionIds must not contain more than ${MAX_FALLBACK_SESSION_IDS} entries`);
+        }
+        const validFallbackSessionIds = fallbackSessionIds.map((sessionId) => validateRefreshIdentifier(sessionId, "sessionId"));
         const indexedFamilies = this.redisClient?.hgetall
-            ? await this.redisClient.hgetall(this.refreshFamilyIndexKey(userId))
+            ? await this.redisClient.hgetall(this.refreshFamilyIndexKey(validUserId))
             : null;
         const sessionIds = new Set([
-            ...fallbackSessionIds,
+            ...validFallbackSessionIds,
             ...Object.keys(indexedFamilies || {}),
         ]);
+        for (const sessionId of sessionIds) {
+            validateRefreshIdentifier(sessionId, "indexed sessionId");
+        }
         if (this.tokenStore.del) {
-            await Promise.all([...sessionIds].map((sessionId) => this.tokenStore.del(this.refreshKey(userId, sessionId))));
+            const pendingSessionIds = [...sessionIds];
+            for (let offset = 0; offset < pendingSessionIds.length; offset += REFRESH_REVOCATION_BATCH_SIZE) {
+                await Promise.all(pendingSessionIds
+                    .slice(offset, offset + REFRESH_REVOCATION_BATCH_SIZE)
+                    .map((sessionId) => this.tokenStore.del(this.refreshKey(validUserId, sessionId))));
+            }
         }
         if (this.redisClient?.del) {
-            await this.redisClient.del(this.refreshFamilyIndexKey(userId));
+            await this.redisClient.del(this.refreshFamilyIndexKey(validUserId));
         }
-        await this.sessionStore.revokeAll(userId);
+        await this.sessionStore.revokeAll(validUserId);
+        await this.audit?.emit({
+            type: "session.revoked_all",
+            severity: "warning",
+            outcome: "success",
+            actor: { type: "system" },
+            subject: { type: "user", id: validUserId },
+        });
     }
-    async rotateTokenIfEnabled(key, currentRefreshToken, decoded) {
+    async rotateTokenIfEnabled(key, storedToken, decoded) {
         if (!this.rotateRefreshTokens)
             return undefined;
         if (!this.tokenStore.compareAndSet) {
             throw new Error("TokenStore must implement compareAndSet for atomic refresh rotation");
         }
         const newRefreshToken = await this.signRefreshToken(decoded);
-        const rotated = await this.tokenStore.compareAndSet(key, currentRefreshToken, newRefreshToken, this.refreshTokenTtlSeconds());
+        const rotated = await this.tokenStore.compareAndSet(key, storedToken, (0, tokenFingerprint_1.tokenFingerprint)(newRefreshToken), this.refreshTokenTtlSeconds());
         if (!rotated) {
-            await this.revokeRefreshFamily(decoded.userId, decoded.sessionId);
+            try {
+                await this.reportConcurrentRefresh(decoded);
+            }
+            finally {
+                await this.revokeRefreshFamily(decoded.userId, decoded.sessionId);
+            }
             throw new InvalidTokenError("Concurrent refresh detected");
         }
         return newRefreshToken;
@@ -115,13 +260,18 @@ class RefreshService {
     async verifyRefreshToken(refreshToken) {
         try {
             const decoded = await this.refreshKeys.verify(refreshToken, "refresh");
-            if (!decoded.userId || !decoded.email || !decoded.sessionId) {
+            const userId = validateRefreshIdentifier(decoded.userId, "userId");
+            const sessionId = validateRefreshIdentifier(decoded.sessionId, "sessionId");
+            if (typeof decoded.email !== "string" ||
+                decoded.email.length === 0 ||
+                decoded.email.length > 254 ||
+                (0, safeString_1.containsControlCharacter)(decoded.email)) {
                 throw new InvalidTokenError();
             }
             return {
-                userId: decoded.userId,
+                userId,
                 email: decoded.email,
-                sessionId: decoded.sessionId,
+                sessionId,
             };
         }
         catch (error) {
@@ -132,7 +282,7 @@ class RefreshService {
     }
     signRefreshToken(payload) {
         return this.refreshKeys.sign(payload, {
-            expiresIn: this.refreshTokenExpiry,
+            expiresInSeconds: this.refreshTokenTtl,
             tokenUse: "refresh",
         });
     }
@@ -155,34 +305,35 @@ class RefreshService {
         }
     }
     refreshTokenTtlSeconds() {
-        if (typeof this.refreshTokenExpiry === "number") {
-            return this.refreshTokenExpiry;
-        }
-        const match = /^(\d+)([smhd])$/.exec(this.refreshTokenExpiry);
-        if (!match)
-            return DEFAULT_REFRESH_TTL_SECONDS;
-        const amount = Number(match[1]);
-        switch (match[2]) {
-            case "s":
-                return amount;
-            case "m":
-                return amount * 60;
-            case "h":
-                return amount * 60 * 60;
-            case "d":
-                return amount * 60 * 60 * 24;
-            default:
-                return DEFAULT_REFRESH_TTL_SECONDS;
-        }
+        return this.refreshTokenTtl;
     }
     refreshKey(userId, sessionId) {
-        return `refresh:${userId}:${sessionId}`;
+        return this.scoped("refresh", pairDigest(userId, sessionId));
     }
     refreshFamilyIndexKey(userId) {
-        return `refresh-families:${userId}`;
+        return this.scoped("refresh-families", userId);
     }
     lockKey(userId, sessionId) {
-        return `lock:${userId}:${sessionId}`;
+        return this.scoped("lock", pairDigest(userId, sessionId));
+    }
+    scoped(...parts) {
+        return [this.keyPrefix, ...parts].filter(Boolean).join(":");
+    }
+    principal(userId, sessionId) {
+        return { kind: "human", id: userId, sessionId };
+    }
+    async reportConcurrentRefresh(decoded) {
+        await this.risk?.report({
+            type: "concurrent_refresh",
+            principal: this.principal(decoded.userId, decoded.sessionId),
+        });
+        await this.audit?.emit({
+            type: "refresh_token.concurrent_use_detected",
+            severity: "warning",
+            outcome: "denied",
+            actor: { type: "user", id: decoded.userId },
+            sessionId: decoded.sessionId,
+        });
     }
 }
 exports.RefreshService = RefreshService;
